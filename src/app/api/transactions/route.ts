@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { TransactionStatus } from "@prisma/client";
+import { TransactionStatus, PaymentMethod } from "@prisma/client";
+import { resolvePaymentLinks } from "@/lib/paymentMethod";
 
 const createSchema = z.object({
   eventDate: z.string(),
   settlementDate: z.string().nullable().optional(),
   categoryId: z.string().nullable().optional(),
+  paymentMethod: z.nativeEnum(PaymentMethod).optional(),
   bankId: z.string().nullable().optional(),
   creditCardId: z.string().nullable().optional(),
   description: z.string().min(1),
@@ -78,13 +80,17 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
 
   const d = parsed.data;
+  const paymentMethod = d.paymentMethod ?? PaymentMethod.DEBITO;
+  const { bankId, creditCardId } = resolvePaymentLinks(paymentMethod, d.bankId || null, d.creditCardId || null);
+
   const transaction = await prisma.transaction.create({
     data: {
       eventDate: new Date(d.eventDate),
       settlementDate: d.settlementDate ? new Date(d.settlementDate) : null,
       categoryId: d.categoryId || null,
-      bankId: d.bankId || null,
-      creditCardId: d.creditCardId || null,
+      paymentMethod,
+      bankId,
+      creditCardId,
       description: d.description,
       amount: d.amount,
       status: d.status ?? TransactionStatus.PENDENTE,

@@ -4,12 +4,16 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import type { CategoryOption } from "@/lib/categories";
 import { toDateInputValue } from "@/lib/format";
+import { PAYMENT_METHOD_LABEL } from "@/lib/paymentMethod";
+
+export type PaymentMethodValue = "DEBITO" | "CREDITO" | "PIX" | "DINHEIRO";
 
 export type TransactionFormValues = {
   id?: string;
   eventDate: string;
   settlementDate: string;
   categoryId: string;
+  paymentMethod: PaymentMethodValue;
   bankId: string;
   creditCardId: string;
   description: string;
@@ -19,11 +23,14 @@ export type TransactionFormValues = {
   isRecurring: boolean;
 };
 
+const PAYMENT_METHODS: PaymentMethodValue[] = ["DEBITO", "CREDITO", "PIX", "DINHEIRO"];
+
 export function emptyTransactionForm(): TransactionFormValues {
   return {
     eventDate: toDateInputValue(new Date()),
     settlementDate: "",
     categoryId: "",
+    paymentMethod: "DEBITO",
     bankId: "",
     creditCardId: "",
     description: "",
@@ -141,39 +148,40 @@ export function TransactionForm({
           </select>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted">Instituição Financeira</label>
-            <select
-              value={values.bankId}
-              onChange={(e) => {
-                set("bankId", e.target.value);
-                if (e.target.value) set("creditCardId", "");
-              }}
-              className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">Nenhuma</option>
-              {banks.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-            {banks.length === 0 && (
-              <span className="text-[11px] text-muted">Nenhum banco cadastrado — cadastre em "Bancos".</span>
-            )}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-muted">Forma de pagamento</label>
+          <div className="grid grid-cols-4 gap-1.5">
+            {PAYMENT_METHODS.map((pm) => (
+              <button
+                key={pm}
+                type="button"
+                onClick={() => set("paymentMethod", pm)}
+                className={`rounded-lg py-1.5 text-xs font-medium border transition ${
+                  values.paymentMethod === pm
+                    ? "bg-accent text-accent-foreground border-accent"
+                    : "border-border text-muted hover:text-foreground"
+                }`}
+              >
+                {PAYMENT_METHOD_LABEL[pm]}
+              </button>
+            ))}
           </div>
+          <p className="text-[11px] text-muted mt-0.5">
+            {values.paymentMethod === "CREDITO"
+              ? "Vai para a fatura do cartão — não mexe no saldo do banco."
+              : "Sai direto do saldo do banco selecionado abaixo."}
+          </p>
+        </div>
+
+        {values.paymentMethod === "CREDITO" ? (
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-muted">Cartão de Crédito</label>
             <select
               value={values.creditCardId}
-              onChange={(e) => {
-                set("creditCardId", e.target.value);
-                if (e.target.value) set("bankId", "");
-              }}
+              onChange={(e) => set("creditCardId", e.target.value)}
               className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
             >
-              <option value="">Nenhum</option>
+              <option value="">Selecione o cartão</option>
               {creditCards.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -184,7 +192,26 @@ export function TransactionForm({
               <span className="text-[11px] text-muted">Nenhum cartão cadastrado — cadastre em "Cartões".</span>
             )}
           </div>
-        </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted">Instituição Financeira</label>
+            <select
+              value={values.bankId}
+              onChange={(e) => set("bankId", e.target.value)}
+              className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="">Selecione o banco</option>
+              {banks.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+            {banks.length === 0 && (
+              <span className="text-[11px] text-muted">Nenhum banco cadastrado — cadastre em "Bancos".</span>
+            )}
+          </div>
+        )}
 
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-muted">Descrição</label>

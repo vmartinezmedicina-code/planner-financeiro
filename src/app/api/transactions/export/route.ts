@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCategoryOptions } from "@/lib/categories";
+import { PAYMENT_METHOD_LABEL } from "@/lib/paymentMethod";
 
 function csvEscape(value: string) {
   if (/[",\n;]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
@@ -34,6 +35,7 @@ export async function GET(req: NextRequest) {
     "Data do evento",
     "Data da efetivação",
     "Categoria",
+    "Forma de Pagamento",
     "Instituição Financeira",
     "Cartão de Crédito",
     "Descrição",
@@ -46,6 +48,7 @@ export async function GET(req: NextRequest) {
     t.eventDate.toISOString().slice(0, 10),
     t.settlementDate ? t.settlementDate.toISOString().slice(0, 10) : "",
     t.categoryId ? categoryLabel.get(t.categoryId) ?? "" : "",
+    PAYMENT_METHOD_LABEL[t.paymentMethod],
     t.bank?.name ?? "",
     t.creditCardRef?.name ?? "",
     t.description,

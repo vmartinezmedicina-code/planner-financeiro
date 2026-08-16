@@ -18,7 +18,8 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatDate, toDateInputValue } from "@/lib/format";
 import type { CategoryOption } from "@/lib/categories";
-import { TransactionForm, TransactionFormValues, emptyTransactionForm } from "./TransactionForm";
+import { PAYMENT_METHOD_LABEL } from "@/lib/paymentMethod";
+import { TransactionForm, TransactionFormValues, PaymentMethodValue, emptyTransactionForm } from "./TransactionForm";
 
 type Transaction = {
   id: string;
@@ -26,6 +27,7 @@ type Transaction = {
   settlementDate: string | null;
   categoryId: string | null;
   category: { id: string; name: string } | null;
+  paymentMethod: PaymentMethodValue;
   bankId: string | null;
   bank: { id: string; name: string } | null;
   creditCardId: string | null;
@@ -148,6 +150,7 @@ export function TransactionsBoard({
       eventDate: values.eventDate,
       settlementDate: values.settlementDate || null,
       categoryId: values.categoryId || null,
+      paymentMethod: values.paymentMethod,
       bankId: values.bankId || null,
       creditCardId: values.creditCardId || null,
       description: values.description,
@@ -255,6 +258,7 @@ export function TransactionsBoard({
         eventDate: toDateInputValue(editing.eventDate),
         settlementDate: editing.settlementDate ? toDateInputValue(editing.settlementDate) : "",
         categoryId: editing.categoryId ?? "",
+        paymentMethod: editing.paymentMethod,
         bankId: editing.bankId ?? "",
         creditCardId: editing.creditCardId ?? "",
         description: editing.description,
@@ -470,6 +474,7 @@ export function TransactionsBoard({
               <th className="p-2.5">Data evento</th>
               <th className="p-2.5">Data efetivação</th>
               <th className="p-2.5">Categoria</th>
+              <th className="p-2.5">Forma</th>
               <th className="p-2.5">Instituição</th>
               <th className="p-2.5">Cartão</th>
               <th className="p-2.5">Descrição</th>
@@ -494,6 +499,16 @@ export function TransactionsBoard({
                   ) : (
                     <span className="text-xs text-warning-fg bg-warning-bg rounded px-1.5 py-0.5">Sem categoria</span>
                   )}
+                </td>
+                <td className="p-2.5 whitespace-nowrap">
+                  <span
+                    className={clsx(
+                      "text-xs rounded-full px-2 py-0.5",
+                      t.paymentMethod === "CREDITO" ? "bg-accent/10 text-accent" : "bg-surface-muted text-muted"
+                    )}
+                  >
+                    {PAYMENT_METHOD_LABEL[t.paymentMethod]}
+                  </span>
                 </td>
                 <td className="p-2.5 whitespace-nowrap text-muted">{t.bank?.name ?? "—"}</td>
                 <td className="p-2.5 whitespace-nowrap text-muted">{t.creditCardRef?.name ?? "—"}</td>
@@ -522,7 +537,7 @@ export function TransactionsBoard({
             ))}
             {data && data.items.length === 0 && (
               <tr>
-                <td colSpan={10} className="p-6 text-center text-sm text-muted">
+                <td colSpan={11} className="p-6 text-center text-sm text-muted">
                   Nenhum lançamento encontrado para os filtros aplicados.
                 </td>
               </tr>

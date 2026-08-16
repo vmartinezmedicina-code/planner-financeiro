@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCategoryOptions } from "@/lib/categories";
 import { TransactionStatus } from "@prisma/client";
+import { resolvePaymentLinks } from "@/lib/paymentMethod";
 
 function parseCsv(text: string): string[][] {
   const clean = text.replace(/^﻿/, "");
@@ -103,14 +104,19 @@ export async function POST(req: NextRequest) {
     const status = STATUS_MAP[statusRaw] ?? TransactionStatus.PENDENTE;
     const isRecurring = iRecurring !== -1 ? /sim|true|1/i.test(row[iRecurring] ?? "") : false;
 
-    const bankId = await resolveBankId(iBank !== -1 ? row[iBank] : undefined);
-    const creditCardId = await resolveCardId(iCard !== -1 ? row[iCard] : undefined);
+    const rawBankId = await resolveBankId(iBank !== -1 ? row[iBank] : undefined);
+    const rawCreditCardId = await resolveCardId(iCard !== -1 ? row[iCard] : undefined);
+    // Se a linha traz um cartão, a forma de pagamento é crédito (fatura);
+    // caso contrário, cai em débito e usa o banco (nunca os dois juntos).
+    const paymentMethod = rawCreditCardId ? "CREDITO" : "DEBITO";
+    const { bankId, creditCardId } = resolvePaymentLinks(paymentMethod, rawBankId, rawCreditCardId);
 
     await prisma.transaction.create({
       data: {
         eventDate,
         settlementDate,
         categoryId,
+        paymentMethod,
         bankId,
         creditCardId,
         description,

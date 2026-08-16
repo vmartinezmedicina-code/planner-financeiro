@@ -109,12 +109,23 @@ enum TransactionStatus {
   CONFIRMADO
 }
 
+// Forma de pagamento: define para onde o lançamento é direcionado.
+// CREDITO -> entra na fatura do cartão (creditCardId), NUNCA mexe no saldo do banco.
+// DEBITO / PIX / DINHEIRO -> sai direto do saldo do banco (bankId), NUNCA vai para fatura.
+enum PaymentMethod {
+  DEBITO
+  CREDITO
+  PIX
+  DINHEIRO
+}
+
 model Transaction {
   id             String            @id @default(cuid())
   eventDate      DateTime // data do evento (compra)
   settlementDate DateTime? // data da efetivação (pagamento)
   categoryId     String?
   category       Category?         @relation(fields: [categoryId], references: [id])
+  paymentMethod  PaymentMethod     @default(DEBITO)
   bankId         String?
   bank           Bank?             @relation(fields: [bankId], references: [id])
   creditCardId   String?
