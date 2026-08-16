@@ -3,17 +3,20 @@ import { getCategoryOptions } from "@/lib/categories";
 import { TransactionsBoard } from "@/components/transactions/TransactionsBoard";
 
 export default async function LancamentosPage() {
-  const [categories, bankRows] = await Promise.all([
+  const [categories, banks, creditCards] = await Promise.all([
     getCategoryOptions(),
-    prisma.transaction.findMany({
-      distinct: ["bankInstitution"],
-      select: { bankInstitution: true },
-      where: { bankInstitution: { not: null } },
-    }),
+    prisma.bank.findMany({ orderBy: { order: "asc" }, select: { id: true, name: true } }),
+    prisma.creditCard.findMany({ orderBy: { order: "asc" }, select: { id: true, name: true } }),
   ]);
 
-  const banks = bankRows.map((b) => b.bankInstitution!).filter(Boolean).sort();
   const categoryPathById = Object.fromEntries(categories.map((c) => [c.id, c.label]));
 
-  return <TransactionsBoard categories={categories} banks={banks} categoryPathById={categoryPathById} />;
+  return (
+    <TransactionsBoard
+      categories={categories}
+      banks={banks}
+      creditCards={creditCards}
+      categoryPathById={categoryPathById}
+    />
+  );
 }

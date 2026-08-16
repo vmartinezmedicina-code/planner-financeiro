@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListChecks, Receipt, PiggyBank } from "lucide-react";
+import { LayoutDashboard, ListChecks, Receipt, PiggyBank, Landmark, CreditCard, MessageCircle } from "lucide-react";
 import { clsx } from "clsx";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/planejamento", label: "Planejamento", icon: ListChecks },
   { href: "/lancamentos", label: "Lançamentos", icon: Receipt },
+  { href: "/bancos", label: "Bancos", icon: Landmark },
+  { href: "/cartoes", label: "Cartões", icon: CreditCard },
   { href: "/investimentos", label: "Investimentos", icon: PiggyBank },
+  { href: "/assistente", label: "Assistente IA", icon: MessageCircle },
 ];
 
 export function AppNav({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {
@@ -44,7 +47,7 @@ export function AppNav({ className, onNavigate }: { className?: string; onNaviga
 export function MobileTabBar() {
   const pathname = usePathname();
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 flex sm:hidden border-t border-border bg-surface pb-[env(safe-area-inset-bottom)]">
+    <nav className="fixed bottom-0 inset-x-0 z-40 flex sm:hidden border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] overflow-x-auto">
       {NAV_ITEMS.map((item) => {
         const active = pathname === item.href;
         const Icon = item.icon;
@@ -53,7 +56,7 @@ export function MobileTabBar() {
             key={item.href}
             href={item.href}
             className={clsx(
-              "flex-1 flex flex-col items-center gap-0.5 py-2 text-[11px]",
+              "shrink-0 basis-1/5 flex flex-col items-center gap-0.5 py-2 text-[11px]",
               active ? "text-accent" : "text-muted"
             )}
           >

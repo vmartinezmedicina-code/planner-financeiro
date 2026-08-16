@@ -23,26 +23,20 @@ export async function getDashboardData(year: number, month: number, monthsBack =
   const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
   const startOfNextMonth = new Date(Date.UTC(year, month, 1));
 
-  const [bankGroups, transactions] = await Promise.all([
-    prisma.transaction.groupBy({
-      by: ["bankInstitution"],
-      where: { eventDate: { gte: startOfMonth, lt: startOfNextMonth }, bankInstitution: { not: null } },
-      _sum: { amount: true },
-    }),
-    prisma.transaction.findMany({
-      where: { eventDate: { gte: startOfMonth, lt: startOfNextMonth } },
-      select: { creditCard: true, amount: true },
-    }),
-  ]);
+  const transactions = await prisma.transaction.findMany({
+    where: { eventDate: { gte: startOfMonth, lt: startOfNextMonth } },
+    select: { amount: true, bank: { select: { name: true } }, creditCardRef: { select: { name: true } } },
+  });
 
+  const bankTotals = new Map<string, number>();
   const cardTotals = new Map<string, number>();
   for (const t of transactions) {
-    if (!t.creditCard) continue;
-    cardTotals.set(t.creditCard, (cardTotals.get(t.creditCard) ?? 0) + t.amount);
+    if (t.bank) bankTotals.set(t.bank.name, (bankTotals.get(t.bank.name) ?? 0) + t.amount);
+    if (t.creditCardRef) cardTotals.set(t.creditCardRef.name, (cardTotals.get(t.creditCardRef.name) ?? 0) + t.amount);
   }
 
-  const byBank = bankGroups
-    .map((b) => ({ label: b.bankInstitution as string, total: b._sum.amount ?? 0 }))
+  const byBank = [...bankTotals.entries()]
+    .map(([label, total]) => ({ label, total }))
     .sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
 
   const byCard = [...cardTotals.entries()]

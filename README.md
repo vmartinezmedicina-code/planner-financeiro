@@ -72,7 +72,18 @@ e-mails/senhas configurados no `.env`.
 | Dashboard | `/` | Saldo do período, comparativo planejado x realizado, evolução mensal (gráfico), totais por banco/cartão |
 | Planejamento | `/planejamento` | Árvore de categorias/subcategorias com CRUD, valores planejados por mês, abas Planejado/Realizado |
 | Lançamentos | `/lancamentos` | Listagem com filtros, CRUD, ações em lote, importação/exportação CSV, categorização automática |
+| Bancos | `/bancos` | Cadastro de bancos/contas com saldo inicial; saldo atual é recalculado automaticamente a partir dos lançamentos vinculados |
+| Cartões de Crédito | `/cartoes` | Cadastro de cartões; fatura atual soma todos os lançamentos vinculados (inclusive pendentes), com detalhamento por categoria |
 | Investimentos | `/investimentos` | Cadastro de aportes e resumo consolidado da carteira |
+| Assistente IA | `/assistente` | Chat com a IA da Anthropic (Claude) com contexto dos seus dados financeiros — requer `ANTHROPIC_API_KEY` no `.env` |
+
+### Sobre o Assistente IA
+
+O chat usa a [API da Anthropic](https://console.anthropic.com) (modelo `claude-opus-5`), que é **paga por uso** e
+precisa de uma chave própria. Sem `ANTHROPIC_API_KEY` configurada no `.env`, a tela mostra um aviso e o resto do
+app continua funcionando normalmente. A cada mensagem, o servidor monta um resumo com saldo do mês, planejado vs.
+realizado, saldos dos bancos, faturas dos cartões e totais de investimentos, e envia isso como contexto — a IA não
+tem acesso direto ao banco de dados, só a esse resumo.
 
 ### Sobre a "categorização automática" dos lançamentos
 

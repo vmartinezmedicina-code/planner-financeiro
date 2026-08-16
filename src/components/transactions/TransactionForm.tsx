@@ -10,8 +10,8 @@ export type TransactionFormValues = {
   eventDate: string;
   settlementDate: string;
   categoryId: string;
-  bankInstitution: string;
-  creditCard: string;
+  bankId: string;
+  creditCardId: string;
   description: string;
   amount: string;
   kind: "receita" | "despesa";
@@ -24,8 +24,8 @@ export function emptyTransactionForm(): TransactionFormValues {
     eventDate: toDateInputValue(new Date()),
     settlementDate: "",
     categoryId: "",
-    bankInstitution: "",
-    creditCard: "",
+    bankId: "",
+    creditCardId: "",
     description: "",
     amount: "",
     kind: "despesa",
@@ -36,11 +36,15 @@ export function emptyTransactionForm(): TransactionFormValues {
 
 export function TransactionForm({
   categories,
+  banks,
+  creditCards,
   initial,
   onClose,
   onSubmit,
 }: {
   categories: CategoryOption[];
+  banks: { id: string; name: string }[];
+  creditCards: { id: string; name: string }[];
   initial: TransactionFormValues;
   onClose: () => void;
   onSubmit: (values: TransactionFormValues) => Promise<void>;
@@ -140,21 +144,45 @@ export function TransactionForm({
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-muted">Instituição Financeira</label>
-            <input
-              value={values.bankInstitution}
-              onChange={(e) => set("bankInstitution", e.target.value)}
+            <select
+              value={values.bankId}
+              onChange={(e) => {
+                set("bankId", e.target.value);
+                if (e.target.value) set("creditCardId", "");
+              }}
               className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
-              placeholder="Ex: Nubank"
-            />
+            >
+              <option value="">Nenhuma</option>
+              {banks.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+            {banks.length === 0 && (
+              <span className="text-[11px] text-muted">Nenhum banco cadastrado — cadastre em "Bancos".</span>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-muted">Cartão de Crédito</label>
-            <input
-              value={values.creditCard}
-              onChange={(e) => set("creditCard", e.target.value)}
+            <select
+              value={values.creditCardId}
+              onChange={(e) => {
+                set("creditCardId", e.target.value);
+                if (e.target.value) set("bankId", "");
+              }}
               className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
-              placeholder="Ex: Cartão final 1234"
-            />
+            >
+              <option value="">Nenhum</option>
+              {creditCards.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            {creditCards.length === 0 && (
+              <span className="text-[11px] text-muted">Nenhum cartão cadastrado — cadastre em "Cartões".</span>
+            )}
           </div>
         </div>
 

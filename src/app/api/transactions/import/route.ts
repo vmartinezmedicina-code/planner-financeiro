@@ -60,6 +60,31 @@ export async function POST(req: NextRequest) {
   const categories = await getCategoryOptions();
   const categoryByLabel = new Map(categories.map((c) => [c.label.toLowerCase(), c.id]));
 
+  const [existingBanks, existingCards] = await Promise.all([
+    prisma.bank.findMany(),
+    prisma.creditCard.findMany(),
+  ]);
+  const bankByName = new Map(existingBanks.map((b) => [b.name.toLowerCase(), b.id]));
+  const cardByName = new Map(existingCards.map((c) => [c.name.toLowerCase(), c.id]));
+
+  async function resolveBankId(name: string | undefined): Promise<string | null> {
+    if (!name) return null;
+    const key = name.toLowerCase();
+    if (bankByName.has(key)) return bankByName.get(key)!;
+    const bank = await prisma.bank.create({ data: { name, initialBalance: 0 } });
+    bankByName.set(key, bank.id);
+    return bank.id;
+  }
+
+  async function resolveCardId(name: string | undefined): Promise<string | null> {
+    if (!name) return null;
+    const key = name.toLowerCase();
+    if (cardByName.has(key)) return cardByName.get(key)!;
+    const card = await prisma.creditCard.create({ data: { name } });
+    cardByName.set(key, card.id);
+    return card.id;
+  }
+
   let created = 0;
   let skipped = 0;
 
@@ -78,13 +103,16 @@ export async function POST(req: NextRequest) {
     const status = STATUS_MAP[statusRaw] ?? TransactionStatus.PENDENTE;
     const isRecurring = iRecurring !== -1 ? /sim|true|1/i.test(row[iRecurring] ?? "") : false;
 
+    const bankId = await resolveBankId(iBank !== -1 ? row[iBank] : undefined);
+    const creditCardId = await resolveCardId(iCard !== -1 ? row[iCard] : undefined);
+
     await prisma.transaction.create({
       data: {
         eventDate,
         settlementDate,
         categoryId,
-        bankInstitution: iBank !== -1 ? row[iBank] || null : null,
-        creditCard: iCard !== -1 ? row[iCard] || null : null,
+        bankId,
+        creditCardId,
         description,
         amount,
         status,

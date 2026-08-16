@@ -8,8 +8,8 @@ const createSchema = z.object({
   eventDate: z.string(),
   settlementDate: z.string().nullable().optional(),
   categoryId: z.string().nullable().optional(),
-  bankInstitution: z.string().nullable().optional(),
-  creditCard: z.string().nullable().optional(),
+  bankId: z.string().nullable().optional(),
+  creditCardId: z.string().nullable().optional(),
   description: z.string().min(1),
   amount: z.number(),
   status: z.nativeEnum(TransactionStatus).optional(),
@@ -23,7 +23,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const startDate = searchParams.get("startDate");
   const endDate = searchParams.get("endDate");
-  const bank = searchParams.get("bank");
+  const bankId = searchParams.get("bankId");
+  const creditCardId = searchParams.get("creditCardId");
   const status = searchParams.get("status");
   const search = searchParams.get("search");
   const uncategorizedOnly = searchParams.get("uncategorized") === "1";
@@ -38,7 +39,8 @@ export async function GET(req: NextRequest) {
       ...(endDate ? { lte: new Date(endDate + "T23:59:59.999Z") } : {}),
     };
   }
-  if (bank && bank !== "Todas") where.bankInstitution = bank;
+  if (bankId && bankId !== "Todas") where.bankId = bankId;
+  if (creditCardId && creditCardId !== "Todos") where.creditCardId = creditCardId;
   if (status && status !== "Todos") where.status = status;
   if (search) where.description = { contains: search };
   if (uncategorizedOnly) where.categoryId = null;
@@ -46,7 +48,7 @@ export async function GET(req: NextRequest) {
   const [items, total, aggregate, uncategorizedCount] = await Promise.all([
     prisma.transaction.findMany({
       where,
-      include: { category: true },
+      include: { category: true, bank: true, creditCardRef: true },
       orderBy: { eventDate: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -81,8 +83,8 @@ export async function POST(req: NextRequest) {
       eventDate: new Date(d.eventDate),
       settlementDate: d.settlementDate ? new Date(d.settlementDate) : null,
       categoryId: d.categoryId || null,
-      bankInstitution: d.bankInstitution || null,
-      creditCard: d.creditCard || null,
+      bankId: d.bankId || null,
+      creditCardId: d.creditCardId || null,
       description: d.description,
       amount: d.amount,
       status: d.status ?? TransactionStatus.PENDENTE,

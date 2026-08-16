@@ -27,6 +27,37 @@ model User {
 }
 
 // ---------------------------------------------------------------------------
+// Bancos / contas (saldo inicial + saldo atual calculado pelos lançamentos)
+// ---------------------------------------------------------------------------
+model Bank {
+  id             String   @id @default(cuid())
+  name           String
+  initialBalance Float    @default(0)
+  color          String   @default("#6366f1")
+  order          Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  transactions Transaction[]
+}
+
+// ---------------------------------------------------------------------------
+// Cartões de crédito (fatura calculada pelos lançamentos vinculados)
+// ---------------------------------------------------------------------------
+model CreditCard {
+  id          String   @id @default(cuid())
+  name        String
+  institution String?
+  limit       Float?
+  closingDay  Int? // dia de fechamento da fatura (1-31)
+  dueDay      Int? // dia de vencimento da fatura (1-31)
+  color       String   @default("#ec4899")
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  transactions Transaction[]
+}
+
+// ---------------------------------------------------------------------------
 // Categorias / Subcategorias (hierarquia recursiva ilimitada)
 // ---------------------------------------------------------------------------
 enum CategoryType {
@@ -84,8 +115,10 @@ model Transaction {
   settlementDate DateTime? // data da efetivação (pagamento)
   categoryId     String?
   category       Category?         @relation(fields: [categoryId], references: [id])
-  bankInstitution String?
-  creditCard     String?
+  bankId         String?
+  bank           Bank?             @relation(fields: [bankId], references: [id])
+  creditCardId   String?
+  creditCardRef  CreditCard?       @relation(fields: [creditCardId], references: [id])
   description    String
   amount         Float // positivo = receita, negativo = despesa
   status         TransactionStatus @default(PENDENTE)
@@ -99,6 +132,8 @@ model Transaction {
   @@index([eventDate])
   @@index([categoryId])
   @@index([status])
+  @@index([bankId])
+  @@index([creditCardId])
 }
 
 // ---------------------------------------------------------------------------

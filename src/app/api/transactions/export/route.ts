@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   }
 
   const [items, categories] = await Promise.all([
-    prisma.transaction.findMany({ where, orderBy: { eventDate: "desc" } }),
+    prisma.transaction.findMany({ where, orderBy: { eventDate: "desc" }, include: { bank: true, creditCardRef: true } }),
     getCategoryOptions(),
   ]);
   const categoryLabel = new Map(categories.map((c) => [c.id, c.label]));
@@ -46,8 +46,8 @@ export async function GET(req: NextRequest) {
     t.eventDate.toISOString().slice(0, 10),
     t.settlementDate ? t.settlementDate.toISOString().slice(0, 10) : "",
     t.categoryId ? categoryLabel.get(t.categoryId) ?? "" : "",
-    t.bankInstitution ?? "",
-    t.creditCard ?? "",
+    t.bank?.name ?? "",
+    t.creditCardRef?.name ?? "",
     t.description,
     t.amount.toString().replace(".", ","),
     t.status,

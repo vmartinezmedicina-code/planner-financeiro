@@ -26,8 +26,10 @@ type Transaction = {
   settlementDate: string | null;
   categoryId: string | null;
   category: { id: string; name: string } | null;
-  bankInstitution: string | null;
-  creditCard: string | null;
+  bankId: string | null;
+  bank: { id: string; name: string } | null;
+  creditCardId: string | null;
+  creditCardRef: { id: string; name: string } | null;
   description: string;
   amount: number;
   status: "PENDENTE" | "PAGO" | "CONFIRMADO";
@@ -59,15 +61,18 @@ const STATUS_CLASS: Record<Transaction["status"], string> = {
 export function TransactionsBoard({
   categories,
   banks,
+  creditCards,
   categoryPathById,
 }: {
   categories: CategoryOption[];
-  banks: string[];
+  banks: { id: string; name: string }[];
+  creditCards: { id: string; name: string }[];
   categoryPathById: Record<string, string>;
 }) {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [bank, setBank] = useState("Todas");
+  const [bankId, setBankId] = useState("Todas");
+  const [creditCardId, setCreditCardId] = useState("Todos");
   const [status, setStatus] = useState("Todos");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -85,7 +90,8 @@ export function TransactionsBoard({
     const params = new URLSearchParams();
     if (startDate) params.set("startDate", startDate);
     if (endDate) params.set("endDate", endDate);
-    if (bank !== "Todas") params.set("bank", bank);
+    if (bankId !== "Todas") params.set("bankId", bankId);
+    if (creditCardId !== "Todos") params.set("creditCardId", creditCardId);
     if (status !== "Todos") params.set("status", status);
     if (search) params.set("search", search);
     params.set("page", String(page));
@@ -95,7 +101,7 @@ export function TransactionsBoard({
       setData(json);
       setSelected(new Set());
     }
-  }, [startDate, endDate, bank, status, search, page]);
+  }, [startDate, endDate, bankId, creditCardId, status, search, page]);
 
   useEffect(() => {
     load();
@@ -104,7 +110,8 @@ export function TransactionsBoard({
   function clearFilters() {
     setStartDate("");
     setEndDate("");
-    setBank("Todas");
+    setBankId("Todas");
+    setCreditCardId("Todos");
     setStatus("Todos");
     setSearch("");
     setPage(1);
@@ -141,8 +148,8 @@ export function TransactionsBoard({
       eventDate: values.eventDate,
       settlementDate: values.settlementDate || null,
       categoryId: values.categoryId || null,
-      bankInstitution: values.bankInstitution || null,
-      creditCard: values.creditCard || null,
+      bankId: values.bankId || null,
+      creditCardId: values.creditCardId || null,
       description: values.description,
       amount,
       status: values.status,
@@ -248,8 +255,8 @@ export function TransactionsBoard({
         eventDate: toDateInputValue(editing.eventDate),
         settlementDate: editing.settlementDate ? toDateInputValue(editing.settlementDate) : "",
         categoryId: editing.categoryId ?? "",
-        bankInstitution: editing.bankInstitution ?? "",
-        creditCard: editing.creditCard ?? "",
+        bankId: editing.bankId ?? "",
+        creditCardId: editing.creditCardId ?? "",
         description: editing.description,
         amount: String(Math.abs(editing.amount)),
         kind: editing.amount < 0 ? "despesa" : "receita",
@@ -319,16 +326,36 @@ export function TransactionsBoard({
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-muted">Conta / Instituição</label>
           <select
-            value={bank}
+            value={bankId}
             onChange={(e) => {
-              setBank(e.target.value);
+              setBankId(e.target.value);
               setPage(1);
             }}
             className="rounded-lg border border-border bg-surface-muted px-2.5 py-1.5 text-sm outline-none"
           >
-            <option>Todas</option>
+            <option value="Todas">Todas</option>
             {banks.map((b) => (
-              <option key={b}>{b}</option>
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-muted">Cartão de Crédito</label>
+          <select
+            value={creditCardId}
+            onChange={(e) => {
+              setCreditCardId(e.target.value);
+              setPage(1);
+            }}
+            className="rounded-lg border border-border bg-surface-muted px-2.5 py-1.5 text-sm outline-none"
+          >
+            <option value="Todos">Todos</option>
+            {creditCards.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
             ))}
           </select>
         </div>
@@ -468,8 +495,8 @@ export function TransactionsBoard({
                     <span className="text-xs text-warning-fg bg-warning-bg rounded px-1.5 py-0.5">Sem categoria</span>
                   )}
                 </td>
-                <td className="p-2.5 whitespace-nowrap text-muted">{t.bankInstitution ?? "—"}</td>
-                <td className="p-2.5 whitespace-nowrap text-muted">{t.creditCard ?? "—"}</td>
+                <td className="p-2.5 whitespace-nowrap text-muted">{t.bank?.name ?? "—"}</td>
+                <td className="p-2.5 whitespace-nowrap text-muted">{t.creditCardRef?.name ?? "—"}</td>
                 <td className="p-2.5 max-w-[240px] truncate">{t.description}</td>
                 <td className={clsx("p-2.5 text-right font-medium whitespace-nowrap", t.amount >= 0 ? "text-positive" : "text-negative")}>
                   {formatCurrency(t.amount)}
@@ -532,7 +559,14 @@ export function TransactionsBoard({
       )}
 
       {formOpen && (
-        <TransactionForm categories={categories} initial={editingValues} onClose={() => setFormOpen(false)} onSubmit={handleSave} />
+        <TransactionForm
+          categories={categories}
+          banks={banks}
+          creditCards={creditCards}
+          initial={editingValues}
+          onClose={() => setFormOpen(false)}
+          onSubmit={handleSave}
+        />
       )}
 
       {bulkCategorizeOpen && (
