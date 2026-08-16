@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #f6f7fb;
+  --surface: #ffffff;
+  --surface-muted: #f0f1f6;
+  --foreground: #1c1e29;
+  --muted: #6b7080;
+  --border: #e4e6ef;
+  --accent: #4f46e5;
+  --accent-foreground: #ffffff;
+  --positive: #0f9d58;
+  --positive-bg: #e6f6ec;
+  --negative: #e0393e;
+  --negative-bg: #fce9e9;
+  --warning-bg: #fff6e0;
+  --warning-fg: #92660a;
+}
+
+.dark {
+  --background: #11121a;
+  --surface: #191b26;
+  --surface-muted: #20222f;
+  --foreground: #eceef5;
+  --muted: #9498a8;
+  --border: #2b2e3e;
+  --accent: #818cf8;
+  --accent-foreground: #14152080;
+  --positive: #34d399;
+  --positive-bg: #10301f;
+  --negative: #f87171;
+  --negative-bg: #3a1616;
+  --warning-bg: #3a2f0f;
+  --warning-fg: #f4c452;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-positive: var(--positive);
+  --color-positive-bg: var(--positive-bg);
+  --color-negative: var(--negative);
+  --color-negative-bg: var(--negative-bg);
+  --color-warning-bg: var(--warning-bg);
+  --color-warning-fg: var(--warning-fg);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+* {
+  border-color: var(--border);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}

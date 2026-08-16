@@ -1,0 +1,121 @@
+// Planner Financeiro - schema do banco de dados
+// SQLite local em desenvolvimento; Turso (libSQL) em produção.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Usuários (apenas 2 contas fixas, sem auto-cadastro)
+// ---------------------------------------------------------------------------
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  avatarColor  String   @default("#6366f1")
+  createdAt    DateTime @default(now())
+
+  transactions  Transaction[]
+  investments   Investment[]
+  plannedValues PlannedValue[]
+}
+
+// ---------------------------------------------------------------------------
+// Categorias / Subcategorias (hierarquia recursiva ilimitada)
+// ---------------------------------------------------------------------------
+enum CategoryType {
+  RECEITA
+  DESPESA
+}
+
+model Category {
+  id        String       @id @default(cuid())
+  name      String
+  type      CategoryType
+  order     Int          @default(0)
+  parentId  String?
+  parent    Category?    @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Category[]   @relation("CategoryTree")
+  createdAt DateTime     @default(now())
+
+  plannedValues PlannedValue[]
+  transactions  Transaction[]
+
+  @@index([parentId])
+  @@index([type])
+}
+
+// ---------------------------------------------------------------------------
+// Valores planejados (orçado) por categoria/mês/ano
+// ---------------------------------------------------------------------------
+model PlannedValue {
+  id         String   @id @default(cuid())
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  year       Int
+  month      Int // 1-12
+  amount     Float    @default(0)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  updatedAt  DateTime @updatedAt
+
+  @@unique([categoryId, year, month])
+  @@index([year, month])
+}
+
+// ---------------------------------------------------------------------------
+// Lançamentos (realizado)
+// ---------------------------------------------------------------------------
+enum TransactionStatus {
+  PENDENTE
+  PAGO
+  CONFIRMADO
+}
+
+model Transaction {
+  id             String            @id @default(cuid())
+  eventDate      DateTime // data do evento (compra)
+  settlementDate DateTime? // data da efetivação (pagamento)
+  categoryId     String?
+  category       Category?         @relation(fields: [categoryId], references: [id])
+  bankInstitution String?
+  creditCard     String?
+  description    String
+  amount         Float // positivo = receita, negativo = despesa
+  status         TransactionStatus @default(PENDENTE)
+  isRecurring    Boolean           @default(false)
+  recurrenceRule String? // ex: "MONTHLY"
+  userId         String
+  user           User              @relation(fields: [userId], references: [id])
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([eventDate])
+  @@index([categoryId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Investimentos
+// ---------------------------------------------------------------------------
+model Investment {
+  id            String   @id @default(cuid())
+  product       String // tipo/produto (ex: Tesouro Selic, CDB, Ações)
+  institution    String
+  contributedAmount Float
+  contributionDate  DateTime
+  currentValue      Float
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+}
