@@ -1,7 +1,9 @@
-import { PrismaClient, CategoryType } from "@prisma/client";
+import { CategoryType } from "@prisma/client";
 import bcrypt from "bcryptjs";
-
-const prisma = new PrismaClient();
+import { prisma } from "../src/lib/prisma";
+// Reaproveita o client de src/lib/prisma.ts: ele já escolhe automaticamente
+// entre o engine clássico (SQLite local) e o adapter libSQL (Turso), conforme
+// a DATABASE_URL definida no ambiente em que este script rodar.
 
 async function upsertUser(name: string, email: string, password: string, avatarColor: string) {
   const passwordHash = await bcrypt.hash(password, 10);

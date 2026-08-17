@@ -104,45 +104,47 @@ para lá (veja [src/lib/prisma.ts](src/lib/prisma.ts)).
 
 ### 1. Criar o banco no Turso
 
+Mais simples pelo painel web: em [turso.tech](https://turso.tech), **Create
+Database** → escolha um nome e a região mais próxima (ex: AWS US East -
+Virginia, a mais próxima do Brasil hoje). Depois, copie:
+
+- A **Database URL** (`libsql://SEU-BANCO.turso.io`)
+- Um **Auth Token** (botão "Create Token" na página do banco)
+
+Se preferir CLI, também funciona: `turso db create`, `turso db show --url`,
+`turso db tokens create` (veja [docs.turso.tech](https://docs.turso.tech)).
+
+### 2. Aplicar o schema e popular os dados no Turso
+
+O Prisma Migrate não fala diretamente com URLs `libsql://`, então o projeto
+inclui um script que aplica as migrations e o seed usando o client libSQL
+(`@libsql/client`) diretamente:
+
 ```bash
-npm install -g @turso/cli   # ou: curl -sSfL https://get.tur.so/install.sh | bash
-turso auth signup           # ou "turso auth login" se já tiver conta
-turso db create planner-financeiro
-turso db show planner-financeiro --url         # copie a URL (libsql://...)
-turso db tokens create planner-financeiro      # copie o token
+# PowerShell
+$env:DATABASE_URL="libsql://SEU-BANCO.turso.io"
+$env:TURSO_AUTH_TOKEN="SEU_TOKEN"
+npm run db:deploy-turso   # cria as tabelas
+
+$env:SEED_USER1_EMAIL="voce@..."; $env:SEED_USER1_PASSWORD="..."
+$env:SEED_USER2_EMAIL="esposa@..."; $env:SEED_USER2_PASSWORD="..."
+npm run db:seed           # cria os 2 usuários e as categorias padrão
 ```
 
-### 2. Aplicar o schema no banco do Turso
-
-O Prisma Migrate não fala diretamente com URLs `libsql://`, então geramos o
-SQL localmente e aplicamos via `turso db shell`:
-
 ```bash
-# gera/atualiza as migrations em prisma/migrations (já existe uma "init")
-npx prisma migrate dev
+# bash/macOS/Linux
+DATABASE_URL="libsql://SEU-BANCO.turso.io" TURSO_AUTH_TOKEN="SEU_TOKEN" npm run db:deploy-turso
 
-# aplica todas as migrations no banco do Turso
-turso db shell planner-financeiro < prisma/migrations/*/migration.sql
-```
-
-Se houver mais de uma pasta de migration, aplique cada `migration.sql` em
-ordem cronológica (nome da pasta começa com a data/hora).
-
-### 3. Rodar o seed apontando para o Turso
-
-```bash
-DATABASE_URL="libsql://SEU-BANCO.turso.io" \
-TURSO_AUTH_TOKEN="SEU_TOKEN" \
-JWT_SECRET="qualquer-coisa-para-rodar-o-seed" \
+DATABASE_URL="libsql://SEU-BANCO.turso.io" TURSO_AUTH_TOKEN="SEU_TOKEN" \
 SEED_USER1_EMAIL="voce@..." SEED_USER1_PASSWORD="..." \
 SEED_USER2_EMAIL="esposa@..." SEED_USER2_PASSWORD="..." \
 npm run db:seed
 ```
 
-(No Windows/PowerShell, defina cada variável com `$env:NOME="valor"` antes do
-comando, em vez do prefixo `VAR=valor`.)
+Rode `db:deploy-turso` de novo sempre que criar uma nova migration
+(`prisma/migrations/`) e quiser aplicá-la em produção.
 
-### 4. Deploy na Vercel
+### 3. Deploy na Vercel
 
 1. Suba o projeto para um repositório no GitHub/GitLab.
 2. Em [vercel.com](https://vercel.com), importe o repositório.
@@ -156,14 +158,13 @@ comando, em vez do prefixo `VAR=valor`.)
 Depois disso, o app estará acessível pela URL da Vercel, com os 2 usuários
 podendo logar de qualquer lugar.
 
-> **Nota:** em testes locais, a biblioteca do adapter libSQL (usada só para
-> falar com o Turso) apresentou um bug nos filtros de intervalo de data
-> (`gte`/`lt`). O app já usa o driver clássico do Prisma (sem esse bug) para
-> SQLite local, e só troca para o adapter libSQL quando `DATABASE_URL` aponta
-> para `libsql://`. Depois de configurar o Turso, vale conferir se os
-> filtros de período em Lançamentos e o Dashboard mostram os valores
-> corretos; se o mesmo problema aparecer lá, a alternativa mais simples é
-> usar Postgres (ex: Supabase) no lugar do Turso.
+> **Nota técnica:** o adapter libSQL do Prisma (usado para falar com o Turso)
+> tem um bug conhecido em filtros de intervalo de data quando aponta para um
+> arquivo SQLite local — por isso o app usa o driver clássico do Prisma para
+> `file:./dev.db` e só troca para o adapter libSQL quando `DATABASE_URL`
+> aponta para `libsql://` (Turso de verdade). Testado diretamente contra um
+> banco Turso real: os filtros de período em Lançamentos e no Dashboard
+> funcionam corretamente — o bug não ocorre lá, só no caso de arquivo local.
 
 ### Alternativa mais simples (sem Turso)
 
