@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Search,
   X,
+  Sparkles,
 } from "lucide-react";
 import { formatCurrency, formatDate, toDateInputValue } from "@/lib/format";
 import type { CategoryOption } from "@/lib/categories";
@@ -88,6 +89,11 @@ export function TransactionsBoard({
   const [message, setMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [quickText, setQuickText] = useState("");
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [quickError, setQuickError] = useState<string | null>(null);
+  const [quickPrefill, setQuickPrefill] = useState<TransactionFormValues | null>(null);
+
   const load = useCallback(async () => {
     const params = new URLSearchParams();
     if (startDate) params.set("startDate", startDate);
@@ -135,12 +141,54 @@ export function TransactionsBoard({
 
   function openNew() {
     setEditing(null);
+    setQuickPrefill(null);
     setFormOpen(true);
   }
 
   function openEdit(t: Transaction) {
     setEditing(t);
+    setQuickPrefill(null);
     setFormOpen(true);
+  }
+
+  async function handleQuickParse(e: React.FormEvent) {
+    e.preventDefault();
+    if (!quickText.trim() || quickLoading) return;
+    setQuickLoading(true);
+    setQuickError(null);
+    try {
+      const res = await fetch("/api/transactions/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: quickText.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setQuickError(json.error || "Não foi possível interpretar essa mensagem.");
+        return;
+      }
+      setEditing(null);
+      setQuickPrefill({
+        eventDate: json.eventDate || toDateInputValue(new Date()),
+        settlementDate: json.settlementDate || "",
+        categoryId: json.categoryId || "",
+        paymentMethod: json.paymentMethod || "DEBITO",
+        bankId: json.bankId || "",
+        creditCardId: json.creditCardId || "",
+        description: json.description || quickText.trim(),
+        amount: json.amount ? String(json.amount) : "",
+        kind: json.kind === "receita" ? "receita" : "despesa",
+        status: "PENDENTE",
+        isRecurring: false,
+      });
+      setFormOpen(true);
+      if (json.warning) setQuickError(json.warning);
+      setQuickText("");
+    } catch {
+      setQuickError("Não foi possível conectar ao serviço de interpretação.");
+    } finally {
+      setQuickLoading(false);
+    }
   }
 
   async function handleSave(values: TransactionFormValues) {
@@ -267,13 +315,40 @@ export function TransactionsBoard({
         status: editing.status,
         isRecurring: editing.isRecurring,
       }
-    : emptyTransactionForm();
+    : quickPrefill ?? emptyTransactionForm();
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-foreground">Lançamentos</h1>
       </div>
+
+      <form onSubmit={handleQuickParse} className="flex flex-col gap-2 rounded-2xl border border-accent/30 bg-accent/5 p-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <Sparkles className="h-4 w-4 text-accent" />
+          Lançamento rápido por texto
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            value={quickText}
+            onChange={(e) => setQuickText(e.target.value)}
+            placeholder='Ex: "Mercado no crédito Nubank, R$ 230,50 hoje"'
+            className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
+          />
+          <button
+            type="submit"
+            disabled={quickLoading || !quickText.trim()}
+            className="flex items-center justify-center gap-1.5 rounded-lg bg-accent text-accent-foreground text-sm font-medium px-4 py-2 disabled:opacity-40 shrink-0"
+          >
+            {quickLoading ? "Interpretando..." : "Interpretar"}
+          </button>
+        </div>
+        <p className="text-[11px] text-muted">
+          Diga o valor, categoria, forma de pagamento (débito/crédito/pix/dinheiro) e a data — a IA preenche o
+          formulário pra você conferir e salvar. Nada é lançado sem sua confirmação.
+        </p>
+        {quickError && <p className="text-xs text-warning-fg bg-warning-bg rounded-lg px-3 py-2">{quickError}</p>}
+      </form>
 
       {data && data.uncategorizedCount > 0 && (
         <div className="flex items-center gap-2 rounded-xl bg-warning-bg text-warning-fg px-4 py-3 text-sm">
