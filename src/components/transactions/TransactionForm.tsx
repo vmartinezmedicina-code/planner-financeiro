@@ -21,6 +21,8 @@ export type TransactionFormValues = {
   kind: "receita" | "despesa";
   status: "PENDENTE" | "PAGO" | "CONFIRMADO";
   isRecurring: boolean;
+  isInstallment: boolean;
+  installmentsCount: string;
 };
 
 const PAYMENT_METHODS: PaymentMethodValue[] = ["DEBITO", "CREDITO", "PIX", "DINHEIRO"];
@@ -38,6 +40,8 @@ export function emptyTransactionForm(): TransactionFormValues {
     kind: "despesa",
     status: "PENDENTE",
     isRecurring: false,
+    isInstallment: false,
+    installmentsCount: "2",
   };
 }
 
@@ -192,7 +196,41 @@ export function TransactionForm({
               <span className="text-[11px] text-muted">Nenhum cartão cadastrado — cadastre em "Cartões".</span>
             )}
           </div>
-        ) : (
+        ) : null}
+
+        {values.paymentMethod === "CREDITO" && !initial.id && (
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-3">
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={values.isInstallment}
+                onChange={(e) => set("isInstallment", e.target.checked)}
+                className="h-4 w-4 rounded border-border"
+              />
+              Compra parcelada
+            </label>
+            {values.isInstallment && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-muted">Número de parcelas</label>
+                <input
+                  type="number"
+                  min={2}
+                  max={60}
+                  step={1}
+                  value={values.installmentsCount}
+                  onChange={(e) => set("installmentsCount", e.target.value)}
+                  className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent w-32"
+                />
+                <p className="text-[11px] text-muted">
+                  A "Data do evento" abaixo é a data da 1ª parcela. As demais são lançadas automaticamente, uma por
+                  mês, dividindo o valor total informado.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {values.paymentMethod !== "CREDITO" && (
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-muted">Instituição Financeira</label>
             <select
@@ -225,7 +263,9 @@ export function TransactionForm({
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted">Valor (R$)</label>
+            <label className="text-xs font-medium text-muted">
+              {values.isInstallment ? "Valor total da compra (R$)" : "Valor (R$)"}
+            </label>
             <input
               type="number"
               step="0.01"
@@ -250,22 +290,28 @@ export function TransactionForm({
           </div>
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-foreground">
-          <input
-            type="checkbox"
-            checked={values.isRecurring}
-            onChange={(e) => set("isRecurring", e.target.checked)}
-            className="h-4 w-4 rounded border-border"
-          />
-          Lançamento recorrente
-        </label>
+        {!values.isInstallment && (
+          <label className="flex items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={values.isRecurring}
+              onChange={(e) => set("isRecurring", e.target.checked)}
+              className="h-4 w-4 rounded border-border"
+            />
+            Lançamento recorrente
+          </label>
+        )}
 
         <button
           type="submit"
           disabled={saving}
           className="mt-1 rounded-lg bg-accent text-accent-foreground text-sm font-medium py-2.5 hover:opacity-90 transition disabled:opacity-60"
         >
-          {saving ? "Salvando..." : "Salvar lançamento"}
+          {saving
+            ? "Salvando..."
+            : values.isInstallment
+              ? `Criar ${values.installmentsCount || "?"} parcelas`
+              : "Salvar lançamento"}
         </button>
       </form>
     </div>

@@ -21,9 +21,10 @@ model User {
   avatarColor  String   @default("#6366f1")
   createdAt    DateTime @default(now())
 
-  transactions  Transaction[]
-  investments   Investment[]
-  plannedValues PlannedValue[]
+  transactions         Transaction[]
+  investments          Investment[]
+  plannedValues        PlannedValue[]
+  installmentPurchases InstallmentPurchase[]
 }
 
 // ---------------------------------------------------------------------------
@@ -54,7 +55,8 @@ model CreditCard {
   order       Int      @default(0)
   createdAt   DateTime @default(now())
 
-  transactions Transaction[]
+  transactions         Transaction[]
+  installmentPurchases InstallmentPurchase[]
 }
 
 // ---------------------------------------------------------------------------
@@ -75,8 +77,9 @@ model Category {
   children  Category[]   @relation("CategoryTree")
   createdAt DateTime     @default(now())
 
-  plannedValues PlannedValue[]
-  transactions  Transaction[]
+  plannedValues        PlannedValue[]
+  transactions         Transaction[]
+  installmentPurchases InstallmentPurchase[]
 
   @@index([parentId])
   @@index([type])
@@ -120,48 +123,77 @@ enum PaymentMethod {
 }
 
 model Transaction {
-  id             String            @id @default(cuid())
-  eventDate      DateTime // data do evento (compra)
-  settlementDate DateTime? // data da efetivação (pagamento)
-  categoryId     String?
-  category       Category?         @relation(fields: [categoryId], references: [id])
-  paymentMethod  PaymentMethod     @default(DEBITO)
-  bankId         String?
-  bank           Bank?             @relation(fields: [bankId], references: [id])
-  creditCardId   String?
-  creditCardRef  CreditCard?       @relation(fields: [creditCardId], references: [id])
-  description    String
-  amount         Float // positivo = receita, negativo = despesa
-  status         TransactionStatus @default(PENDENTE)
-  isRecurring    Boolean           @default(false)
-  recurrenceRule String? // ex: "MONTHLY"
-  userId         String
-  user           User              @relation(fields: [userId], references: [id])
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  id                    String               @id @default(cuid())
+  eventDate             DateTime // data do evento (compra)
+  settlementDate        DateTime? // data da efetivação (pagamento)
+  categoryId            String?
+  category              Category?            @relation(fields: [categoryId], references: [id])
+  paymentMethod         PaymentMethod        @default(DEBITO)
+  bankId                String?
+  bank                  Bank?                @relation(fields: [bankId], references: [id])
+  creditCardId          String?
+  creditCardRef         CreditCard?          @relation(fields: [creditCardId], references: [id])
+  description           String
+  amount                Float // positivo = receita, negativo = despesa
+  status                TransactionStatus    @default(PENDENTE)
+  isRecurring           Boolean              @default(false)
+  recurrenceRule        String? // ex: "MONTHLY"
+  installmentPurchaseId String? // preenchido quando o lançamento é 1 parcela de uma compra parcelada
+  installmentPurchase   InstallmentPurchase? @relation(fields: [installmentPurchaseId], references: [id], onDelete: Cascade)
+  installmentNumber     Int? // número desta parcela (1, 2, 3...)
+  userId                String
+  user                  User                 @relation(fields: [userId], references: [id])
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
 
   @@index([eventDate])
   @@index([categoryId])
   @@index([status])
   @@index([bankId])
   @@index([creditCardId])
+  @@index([installmentPurchaseId])
+}
+
+// ---------------------------------------------------------------------------
+// Compras parceladas no cartão de crédito — o "grupo" que liga todas as
+// parcelas (Transaction) geradas de uma vez. Cada parcela é um Transaction
+// normal (entra na fatura do mês dela normalmente); este registro só guarda
+// os dados da compra original para exibir o resumo/gráfico de parcelamentos.
+model InstallmentPurchase {
+  id                String     @id @default(cuid())
+  description       String
+  totalAmount       Float // valor total da compra (positivo)
+  installmentsCount Int
+  purchaseDate      DateTime // data da compra original
+  categoryId        String?
+  category          Category?  @relation(fields: [categoryId], references: [id])
+  creditCardId      String
+  creditCard        CreditCard @relation(fields: [creditCardId], references: [id])
+  userId            String
+  user              User       @relation(fields: [userId], references: [id])
+  createdAt         DateTime   @default(now())
+
+  installments Transaction[]
+
+  @@index([creditCardId])
+  @@index([categoryId])
 }
 
 // ---------------------------------------------------------------------------
 // Investimentos
 // ---------------------------------------------------------------------------
 model Investment {
-  id            String   @id @default(cuid())
-  product       String // tipo/produto (ex: Tesouro Selic, CDB, Ações)
-  institution    String
+  id                String   @id @default(cuid())
+  product           String // tipo/produto (ex: Tesouro Selic, CDB, Ações)
+  institution       String
   contributedAmount Float
   contributionDate  DateTime
   currentValue      Float
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@index([userId])
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListChecks, Receipt, PiggyBank, Landmark, CreditCard, MessageCircle } from "lucide-react";
+import { LayoutDashboard, ListChecks, Receipt, PiggyBank, Landmark, CreditCard, MessageCircle, Layers } from "lucide-react";
 import { clsx } from "clsx";
 
 const NAV_ITEMS = [
@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/lancamentos", label: "Lançamentos", icon: Receipt },
   { href: "/bancos", label: "Bancos", icon: Landmark },
   { href: "/cartoes", label: "Cartões", icon: CreditCard },
+  { href: "/parcelamentos", label: "Parcelamentos", icon: Layers },
   { href: "/investimentos", label: "Investimentos", icon: PiggyBank },
   { href: "/assistente", label: "Assistente IA", icon: MessageCircle },
 ];

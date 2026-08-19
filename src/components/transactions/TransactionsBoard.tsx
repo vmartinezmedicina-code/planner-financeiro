@@ -37,6 +37,8 @@ type Transaction = {
   amount: number;
   status: "PENDENTE" | "PAGO" | "CONFIRMADO";
   isRecurring: boolean;
+  installmentNumber: number | null;
+  installmentPurchase: { installmentsCount: number } | null;
 };
 
 type ListResponse = {
@@ -180,6 +182,8 @@ export function TransactionsBoard({
         kind: json.kind === "receita" ? "receita" : "despesa",
         status: "PENDENTE",
         isRecurring: false,
+        isInstallment: false,
+        installmentsCount: "2",
       });
       setFormOpen(true);
       if (json.warning) setQuickError(json.warning);
@@ -193,6 +197,25 @@ export function TransactionsBoard({
 
   async function handleSave(values: TransactionFormValues) {
     const amountAbs = Math.abs(Number(values.amount) || 0);
+
+    if (values.isInstallment && !values.id) {
+      await fetch("/api/installments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: values.description,
+          totalAmount: amountAbs,
+          installmentsCount: Number(values.installmentsCount) || 2,
+          purchaseDate: values.eventDate,
+          categoryId: values.categoryId || null,
+          creditCardId: values.creditCardId,
+        }),
+      });
+      setFormOpen(false);
+      load();
+      return;
+    }
+
     const amount = values.kind === "despesa" ? -amountAbs : amountAbs;
     const payload = {
       eventDate: values.eventDate,
@@ -314,6 +337,8 @@ export function TransactionsBoard({
         kind: editing.amount < 0 ? "despesa" : "receita",
         status: editing.status,
         isRecurring: editing.isRecurring,
+        isInstallment: false,
+        installmentsCount: "2",
       }
     : quickPrefill ?? emptyTransactionForm();
 
@@ -587,7 +612,14 @@ export function TransactionsBoard({
                 </td>
                 <td className="p-2.5 whitespace-nowrap text-muted">{t.bank?.name ?? "—"}</td>
                 <td className="p-2.5 whitespace-nowrap text-muted">{t.creditCardRef?.name ?? "—"}</td>
-                <td className="p-2.5 max-w-[240px] truncate">{t.description}</td>
+                <td className="p-2.5 max-w-[240px]">
+                  <span className="truncate block">{t.description}</span>
+                  {t.installmentNumber && t.installmentPurchase && (
+                    <span className="text-[10px] text-accent bg-accent/10 rounded px-1.5 py-0.5 mt-0.5 inline-block">
+                      Parcela {t.installmentNumber}/{t.installmentPurchase.installmentsCount}
+                    </span>
+                  )}
+                </td>
                 <td className={clsx("p-2.5 text-right font-medium whitespace-nowrap", t.amount >= 0 ? "text-positive" : "text-negative")}>
                   {formatCurrency(t.amount)}
                 </td>

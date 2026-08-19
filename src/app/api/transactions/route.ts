@@ -50,7 +50,12 @@ export async function GET(req: NextRequest) {
   const [items, total, aggregate, uncategorizedCount] = await Promise.all([
     prisma.transaction.findMany({
       where,
-      include: { category: true, bank: true, creditCardRef: true },
+      include: {
+        category: true,
+        bank: true,
+        creditCardRef: true,
+        installmentPurchase: { select: { installmentsCount: true } },
+      },
       orderBy: { eventDate: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
