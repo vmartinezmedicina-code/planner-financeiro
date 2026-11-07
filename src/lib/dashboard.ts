@@ -12,6 +12,24 @@ function flattenComparison(nodes: CategoryNode[], depth = 0, out: { id: string; 
   return out;
 }
 
+export type Breakdown = { name: string; value: number; children: { name: string; value: number }[] };
+
+// Quebra por setor: cada grupo raiz é aberto em suas categorias; cada categoria traz suas subcategorias.
+function toBreakdown(roots: CategoryNode[]): Breakdown[] {
+  return roots
+    .flatMap((r) => (r.children.length ? r.children : [r]))
+    .map((c) => ({
+      name: c.name,
+      value: c.realizedTotal,
+      children: c.children
+        .map((g) => ({ name: g.name, value: g.realizedTotal }))
+        .filter((g) => g.value > 0)
+        .sort((a, b) => b.value - a.value),
+    }))
+    .filter((c) => c.value > 0)
+    .sort((a, b) => b.value - a.value);
+}
+
 export async function getDashboardData(year: number, month: number, monthsBack = 6) {
   const planning = await getPlanningData(year, month);
 
@@ -151,5 +169,8 @@ export async function getDashboardData(year: number, month: number, monthsBack =
     upcomingInstallments,
     topCategories,
     despesaDeltaPct,
+    receitaBreakdown: toBreakdown(planning.receitaRoots),
+    despesaBreakdown: toBreakdown(planning.despesaRoots),
+    cardInvoices: openInvoices.map((c) => ({ label: c.name, open: c.open, dueDay: c.dueDay })),
   };
 }

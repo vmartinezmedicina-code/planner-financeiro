@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "failedLogins" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "User" ADD COLUMN "lockedUntil" DATETIME;

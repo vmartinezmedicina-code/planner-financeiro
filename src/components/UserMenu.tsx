@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
-import { LogOut } from "lucide-react";
+import Link from "next/link";
+import { KeyRound, LogOut } from "lucide-react";
 
 export function UserMenu({ name, email, avatarColor }: { name: string; email: string; avatarColor: string }) {
   const [open, setOpen] = useState(false);
@@ -47,6 +48,14 @@ export function UserMenu({ name, email, avatarColor }: { name: string; email: st
             <p className="text-sm font-medium text-foreground truncate">{name}</p>
             <p className="text-xs text-muted truncate">{email}</p>
           </div>
+          <Link
+            href="/conta"
+            onClick={() => setOpen(false)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-surface-muted transition"
+          >
+            <KeyRound className="h-4 w-4" />
+            Conta e senha
+          </Link>
           <button
             type="button"
             onClick={handleLogout}

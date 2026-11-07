@@ -20,6 +20,8 @@ model User {
   passwordHash String
   avatarColor  String   @default("#6366f1")
   createdAt    DateTime @default(now())
+  failedLogins Int      @default(0)
+  lockedUntil  DateTime?
 
   transactions         Transaction[]
   investments          Investment[]
