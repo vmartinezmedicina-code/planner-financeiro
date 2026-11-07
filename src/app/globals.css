@@ -72,3 +72,19 @@ body {
   background: var(--border);
   border-radius: 8px;
 }
+
+/* Impressão / "Salvar como PDF": esconde menu e cabeçalho, deixa só o conteúdo */
+@media print {
+  header,
+  aside,
+  nav {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+}

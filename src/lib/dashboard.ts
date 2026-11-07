@@ -69,11 +69,87 @@ export async function getDashboardData(year: number, month: number, monthsBack =
     });
   }
 
+  // --- Indicadores gerais (não dependem só do mês selecionado) ---
+  const banks = await prisma.bank.findMany({ orderBy: { order: "asc" } });
+  const bankBalances = await Promise.all(
+    banks.map(async (b) => {
+      const agg = await prisma.transaction.aggregate({ where: { bankId: b.id }, _sum: { amount: true } });
+      return { label: b.name, total: b.initialBalance + (agg._sum.amount ?? 0) };
+    })
+  );
+  const totalBankBalance = bankBalances.reduce((acc, b) => acc + b.total, 0);
+
+  // Faturas em aberto = lançamentos de cartão ainda pendentes, por cartão.
+  const cards = await prisma.creditCard.findMany({ orderBy: { order: "asc" } });
+  const openInvoices = await Promise.all(
+    cards.map(async (c) => {
+      const agg = await prisma.transaction.aggregate({
+        where: { creditCardId: c.id, status: "PENDENTE" },
+        _sum: { amount: true },
+      });
+      return { id: c.id, name: c.name, dueDay: c.dueDay, open: Math.abs(agg._sum.amount ?? 0) };
+    })
+  );
+  const totalOpenInvoices = openInvoices.reduce((acc, c) => acc + c.open, 0);
+
+  // Alertas: fatura em aberto vencendo nos próximos 7 dias (ou já vencida neste mês).
+  const today = new Date();
+  const dueAlerts: { card: string; open: number; daysLeft: number }[] = [];
+  for (const c of openInvoices) {
+    if (!c.dueDay || c.open <= 0) continue;
+    let due = new Date(today.getFullYear(), today.getMonth(), c.dueDay);
+    const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    if (due < todayMid) due = new Date(today.getFullYear(), today.getMonth() + 1, c.dueDay);
+    const daysLeft = Math.round((due.getTime() - todayMid.getTime()) / 86400000);
+    if (daysLeft <= 7) dueAlerts.push({ card: c.name, open: c.open, daysLeft });
+  }
+  dueAlerts.sort((a, b) => a.daysLeft - b.daysLeft);
+
+  // Parcelas dos próximos 6 meses (a partir do mês selecionado).
+  const upcomingInstallments: { label: string; total: number }[] = [];
+  for (let i = 0; i < 6; i++) {
+    let y = year;
+    let m = month + i;
+    while (m > 12) {
+      m -= 12;
+      y += 1;
+    }
+    const s = new Date(Date.UTC(y, m - 1, 1));
+    const e = new Date(Date.UTC(y, m, 1));
+    const agg = await prisma.transaction.aggregate({
+      where: { installmentPurchaseId: { not: null }, eventDate: { gte: s, lt: e } },
+      _sum: { amount: true },
+    });
+    upcomingInstallments.push({
+      label: `${MONTH_NAMES[m - 1].slice(0, 3)}/${String(y).slice(2)}`,
+      total: Math.abs(agg._sum.amount ?? 0),
+    });
+  }
+
+  // Maiores categorias de despesa do mês (nível 1 abaixo da raiz).
+  const topCategories = planning.despesaRoots
+    .flatMap((r) => r.children)
+    .map((c) => ({ name: c.name, value: c.realizedTotal }))
+    .filter((c) => c.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
+
+  const prevDespesa = evolution.length >= 2 ? evolution[evolution.length - 2].despesa : 0;
+  const currDespesa = evolution.length >= 1 ? evolution[evolution.length - 1].despesa : 0;
+  const despesaDeltaPct = prevDespesa > 0 ? ((currDespesa - prevDespesa) / prevDespesa) * 100 : null;
+
   return {
     summary: planning.summary,
     comparison,
     byBank,
     byCard,
     evolution,
+    totalBankBalance,
+    bankBalances,
+    totalOpenInvoices,
+    dueAlerts,
+    upcomingInstallments,
+    topCategories,
+    despesaDeltaPct,
   };
 }

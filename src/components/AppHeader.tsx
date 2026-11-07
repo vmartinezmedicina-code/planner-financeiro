@@ -62,7 +62,7 @@ export function AppHeader({ session }: { session: Session }) {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <AppNav className="flex flex-col gap-1" onNavigate={() => setMenuOpen(false)} />
+            <AppNav onNavigate={() => setMenuOpen(false)} />
           </div>
         </div>
       )}

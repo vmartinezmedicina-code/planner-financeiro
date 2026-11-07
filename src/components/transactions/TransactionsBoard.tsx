@@ -286,6 +286,26 @@ export function TransactionsBoard({
     load();
   }
 
+  async function handleGenerateRecurring() {
+    const now = new Date();
+    const label = `${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+    if (!confirm(`Gerar os lançamentos recorrentes de ${label} a partir do mês anterior? Itens que já existem não serão duplicados.`)) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/recurring/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year: now.getFullYear(), month: now.getMonth() + 1 }),
+      });
+      const json = await res.json();
+      if (res.ok) setMessage(`${json.created} lançamento(s) recorrente(s) criado(s); ${json.skipped} já existia(m).`);
+      else setMessage(json.error || "Erro ao gerar recorrentes.");
+      load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleAutoCategorize() {
     setBusy(true);
     try {
@@ -519,6 +539,14 @@ export function TransactionsBoard({
           className="flex items-center gap-1.5 rounded-lg border border-border text-xs font-medium px-3 py-2 disabled:opacity-40"
         >
           <Wand2 className="h-3.5 w-3.5" /> Regras automáticas
+        </button>
+        <button
+          type="button"
+          onClick={handleGenerateRecurring}
+          disabled={busy}
+          className="flex items-center gap-1.5 rounded-lg border border-border text-xs font-medium px-3 py-2 disabled:opacity-40"
+        >
+          <Repeat className="h-3.5 w-3.5" /> Gerar recorrentes do mês
         </button>
         <button
           type="button"

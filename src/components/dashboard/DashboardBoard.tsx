@@ -7,12 +7,15 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
 } from "recharts";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Landmark, CreditCard, Layers } from "lucide-react";
 import { MonthYearSelector } from "@/components/MonthYearSelector";
 import { BalanceCard } from "@/components/BalanceCard";
 import { formatCurrency } from "@/lib/format";
@@ -30,7 +33,16 @@ type DashboardData = {
   byBank: { label: string; total: number }[];
   byCard: { label: string; total: number }[];
   evolution: { label: string; receita: number; despesa: number }[];
+  totalBankBalance: number;
+  bankBalances: { label: string; total: number }[];
+  totalOpenInvoices: number;
+  dueAlerts: { card: string; open: number; daysLeft: number }[];
+  upcomingInstallments: { label: string; total: number }[];
+  topCategories: { name: string; value: number }[];
+  despesaDeltaPct: number | null;
 };
+
+const tooltipStyle = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 };
 
 export function DashboardBoard({ initialData, year, month }: { initialData: DashboardData; year: number; month: number }) {
   const router = useRouter();
@@ -55,6 +67,23 @@ export function DashboardBoard({ initialData, year, month }: { initialData: Dash
         <MonthYearSelector year={year} month={month} onChange={handleMonthChange} />
       </div>
 
+      {data.dueAlerts.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {data.dueAlerts.map((a) => (
+            <div
+              key={a.card}
+              className="flex items-center gap-2 rounded-xl bg-warning-bg text-warning-fg px-4 py-3 text-sm"
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>
+                Fatura <strong>{a.card}</strong> ({formatCurrency(a.open)} em aberto) vence{" "}
+                {a.daysLeft === 0 ? "hoje" : a.daysLeft === 1 ? "amanhã" : `em ${a.daysLeft} dias`}.
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <BalanceCard label="Saldo do período (realizado)" value={data.summary.realizedBalance} />
         <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-1">
@@ -65,7 +94,48 @@ export function DashboardBoard({ initialData, year, month }: { initialData: Dash
         <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-1">
           <span className="text-xs font-medium text-muted">Despesas realizadas</span>
           <span className="text-xl font-semibold text-negative">{formatCurrency(data.summary.totalDespesaRealized)}</span>
-          <span className="text-xs text-muted">Planejado: {formatCurrency(data.summary.totalDespesaPlanned)}</span>
+          <span className="text-xs text-muted flex items-center gap-1">
+            Planejado: {formatCurrency(data.summary.totalDespesaPlanned)}
+            {data.despesaDeltaPct !== null && (
+              <span
+                className={clsx(
+                  "ml-1 inline-flex items-center gap-0.5 font-medium",
+                  data.despesaDeltaPct > 0 ? "text-negative" : "text-positive"
+                )}
+              >
+                {data.despesaDeltaPct > 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                {Math.abs(data.despesaDeltaPct).toFixed(0)}% vs. mês anterior
+              </span>
+            )}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted flex items-center gap-1.5">
+            <Landmark className="h-3.5 w-3.5" /> Saldo total em contas
+          </span>
+          <span className={clsx("text-xl font-semibold", data.totalBankBalance >= 0 ? "text-foreground" : "text-negative")}>
+            {formatCurrency(data.totalBankBalance)}
+          </span>
+          <span className="text-xs text-muted">{data.bankBalances.length} conta(s) cadastrada(s)</span>
+        </div>
+        <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted flex items-center gap-1.5">
+            <CreditCard className="h-3.5 w-3.5" /> Faturas em aberto
+          </span>
+          <span className="text-xl font-semibold text-foreground">{formatCurrency(data.totalOpenInvoices)}</span>
+          <span className="text-xs text-muted">lançamentos de cartão ainda pendentes</span>
+        </div>
+        <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted flex items-center gap-1.5">
+            <Layers className="h-3.5 w-3.5" /> Parcelas nos próximos 6 meses
+          </span>
+          <span className="text-xl font-semibold text-foreground">
+            {formatCurrency(data.upcomingInstallments.reduce((acc, p) => acc + p.total, 0))}
+          </span>
+          <span className="text-xs text-muted">compras parceladas já lançadas</span>
         </div>
       </div>
 
@@ -88,6 +158,42 @@ export function DashboardBoard({ initialData, year, month }: { initialData: Dash
           </ResponsiveContainer>
         </div>
       </section>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <section className="rounded-2xl border border-border bg-surface p-4">
+          <h2 className="text-sm font-semibold text-foreground mb-3">Maiores categorias de gasto no mês</h2>
+          {data.topCategories.length === 0 ? (
+            <p className="text-xs text-muted py-6 text-center">Sem despesas no período.</p>
+          ) : (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.topCategories} layout="vertical" margin={{ left: 8, right: 16 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11, fill: "var(--muted)" }} tickFormatter={(v) => formatCurrency(Number(v))} />
+                  <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 12, fill: "var(--muted)" }} />
+                  <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} contentStyle={tooltipStyle} />
+                  <Bar dataKey="value" name="Gasto" fill="var(--negative)" radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-border bg-surface p-4">
+          <h2 className="text-sm font-semibold text-foreground mb-3">Parcelas a pagar nos próximos meses</h2>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.upcomingInstallments} margin={{ left: 8, right: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--muted)" }} />
+                <YAxis tick={{ fontSize: 11, fill: "var(--muted)" }} width={70} tickFormatter={(v) => formatCurrency(Number(v))} />
+                <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} contentStyle={tooltipStyle} />
+                <Bar dataKey="total" name="Parcelas" fill="var(--accent)" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      </div>
 
       <section className="rounded-2xl border border-border bg-surface p-4">
         <h2 className="text-sm font-semibold text-foreground mb-3">Planejado vs. Realizado</h2>
