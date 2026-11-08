@@ -57,7 +57,9 @@ function LoginForm() {
             </label>
             <input
               id="email"
+              name="email"
               type="email"
+              autoComplete="username"
               required
               autoFocus
               value={email}
@@ -73,7 +75,9 @@ function LoginForm() {
             </label>
             <input
               id="password"
+              name="password"
               type="password"
+              autoComplete="current-password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
