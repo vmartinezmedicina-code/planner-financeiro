@@ -9,7 +9,10 @@
     "start": "next start",
     "lint": "eslint",
     "db:seed": "tsx prisma/seed.ts",
-    "db:deploy-turso": "tsx scripts/deploy-turso.ts"
+    "db:deploy-turso": "tsx scripts/deploy-turso.ts",
+    "test": "node --import tsx --test \"tests/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "db:backfill-v2": "tsx scripts/backfill-v2.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
