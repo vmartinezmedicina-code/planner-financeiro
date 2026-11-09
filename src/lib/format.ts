@@ -48,3 +48,14 @@ export function todayInputValue(now: Date = new Date()): string {
 export function todayAsUtcDate(now: Date = new Date()): Date {
   return new Date(todayInputValue(now) + "T00:00:00.000Z");
 }
+
+/** Dia/mes curto de uma data gravada em UTC: "26/11". */
+export function formatDayMonth(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit" });
+}
+
+/** Rotulo curto de mes: (2026, 11) -> "Nov/26". */
+export function shortMonthLabel(year: number, month: number): string {
+  return MONTH_NAMES[month - 1].slice(0, 3) + "/" + String(year).slice(2);
+}

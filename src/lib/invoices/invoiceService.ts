@@ -149,7 +149,7 @@ export async function payInvoice(input: {
     if (!Number.isInteger(amount) || amount <= 0) throw new InvoiceError("Valor do pagamento inválido.");
     if (remaining === 0) throw new InvoiceError("Não há valor em aberto nesta fatura.");
 
-    const paidAt = input.paidAt ?? new Date();
+    const paidAt = input.paidAt ?? todayAsUtcDate();
     const payment = await tx.transaction.create({
       data: {
         eventDate: paidAt,
