@@ -5,7 +5,8 @@ import { listMembers } from "@/lib/household/householdService";
 import { getCategoryOptions } from "@/lib/categories";
 import { TransactionsBoard } from "@/components/transactions/TransactionsBoard";
 
-export default async function LancamentosPage() {
+export default async function LancamentosPage({ searchParams }: { searchParams: Promise<{ novo?: string }> }) {
+  const openNew = (await searchParams).novo === "1";
   const session = await getSession();
   if (!session) redirect("/login");
   const hh = session.householdId;
@@ -26,6 +27,7 @@ export default async function LancamentosPage() {
       categoryPathById={categoryPathById}
       members={members.filter((m) => m.isActive).map((m) => ({ id: m.id, name: m.name }))}
       defaultMemberId={session.memberId}
+      openNewOnLoad={openNew}
     />
   );
 }

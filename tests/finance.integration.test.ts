@@ -21,6 +21,9 @@ type Services = {
   invoices: typeof import("../src/lib/invoices/invoiceService");
   banks: typeof import("../src/lib/finance/banks");
   planning: typeof import("../src/lib/planning");
+  upcoming: typeof import("../src/lib/calendar/upcoming");
+  dashboard: typeof import("../src/lib/dashboard");
+  analytics: typeof import("../src/lib/analytics/categoryAnalytics");
 };
 let s: Services;
 
@@ -34,7 +37,7 @@ let foodCategoryId = "";
 const d = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 
 async function balanceOf(bankId: string) {
-  const list = await s.banks.listBanksWithBalance(HH);
+  const list = await s.banks.listBanksWithBalance(HH, { asOf: null });
   return list.find((b) => b.id === bankId)!.currentBalanceCents;
 }
 
@@ -51,6 +54,9 @@ before(async () => {
     invoices: await import("../src/lib/invoices/invoiceService"),
     banks: await import("../src/lib/finance/banks"),
     planning: await import("../src/lib/planning"),
+    upcoming: await import("../src/lib/calendar/upcoming"),
+    dashboard: await import("../src/lib/dashboard"),
+    analytics: await import("../src/lib/analytics/categoryAnalytics"),
   };
   const p = s.prisma;
   await p.household.createMany({ data: [{ id: HH, name: "Teste" }, { id: OTHER_HH, name: "Outra" }] });
@@ -221,5 +227,77 @@ describe("planejamento", () => {
     const plan = await s.planning.getPlanningData(HH, 2026, 11);
     // mercado (100,50 no débito) + compra do dia 9 (200,00 no crédito)
     assert.equal(plan.summary.totalDespesaRealized, 300.5);
+  });
+});
+
+describe("saldo real × agendado (Fase 2)", () => {
+  // "Hoje" fixo para o teste não depender do relógio.
+  const today = d("2026-11-08");
+
+  test("lançamento com data futura não entra no saldo de hoje; aparece como agendado", async () => {
+    const before = (await s.banks.listBanksWithBalance(HH, { asOf: today })).find((b) => b.id === bankB)!;
+    const future = await s.tx.createTransaction({ householdId: HH, userId, eventDate: d("2026-11-20"), description: "conta de luz", amountCents: -32000, kind: "EXPENSE", bankId: bankB });
+
+    const after = (await s.banks.listBanksWithBalance(HH, { asOf: today })).find((b) => b.id === bankB)!;
+    assert.equal(after.currentBalanceCents, before.currentBalanceCents, "saldo real de hoje não muda");
+    assert.equal(after.scheduledCents, before.scheduledCents - 32000);
+
+    const onTheDay = (await s.banks.listBanksWithBalance(HH, { asOf: d("2026-11-20") })).find((b) => b.id === bankB)!;
+    assert.equal(onTheDay.currentBalanceCents, before.currentBalanceCents + before.scheduledCents - 32000, "no dia, entra no saldo");
+    await s.tx.deleteTransaction(future.id, HH);
+  });
+
+  test("data de efetivação, quando informada, é a data de caixa", async () => {
+    const before = (await s.banks.listBanksWithBalance(HH, { asOf: today })).find((b) => b.id === bankB)!;
+    // compra em 05/11 (passado), mas o dinheiro só sai em 15/11 (futuro)
+    const t = await s.tx.createTransaction({ householdId: HH, userId, eventDate: d("2026-11-05"), settlementDate: d("2026-11-15"), description: "boleto", amountCents: -5000, kind: "EXPENSE", bankId: bankB });
+    const after = (await s.banks.listBanksWithBalance(HH, { asOf: today })).find((b) => b.id === bankB)!;
+    assert.equal(after.currentBalanceCents, before.currentBalanceCents);
+    assert.equal(after.scheduledCents, before.scheduledCents - 5000);
+    await s.tx.deleteTransaction(t.id, HH);
+  });
+});
+
+describe("próximos vencimentos e dashboard (Fase 2)", () => {
+  const today = d("2026-11-08");
+
+  test("lista faturas não pagas e lançamentos futuros da janela, em ordem de data", async () => {
+    const bill = await s.tx.createTransaction({ householdId: HH, userId, eventDate: d("2026-11-20"), description: "energia", amountCents: -32000, kind: "EXPENSE", bankId: bankA });
+    const pay = await s.tx.createTransaction({ householdId: HH, userId, eventDate: d("2026-11-25"), description: "freelance", amountCents: 150000, kind: "INCOME", bankId: bankA });
+    const far = await s.tx.createTransaction({ householdId: HH, userId, eventDate: d("2027-03-01"), description: "longe", amountCents: -999, kind: "EXPENSE", bankId: bankA });
+
+    const items = await s.upcoming.getUpcoming(HH, { today, days: 30 });
+    const labels = items.map((i) => i.label);
+    assert.ok(labels.includes("energia") && labels.includes("freelance"));
+    assert.ok(!labels.includes("longe"), "fora da janela de 30 dias");
+    assert.ok(!labels.includes("mercado"), "lançamentos passados não são compromissos");
+    const invoice = items.find((i) => i.source === "INVOICE" && i.label.includes("11/2026"))!;
+    assert.equal(invoice.amountCents, -20000);
+    assert.equal(invoice.provisional, true, "fatura ainda aberta em 08/11 (fecha dia 10)");
+    assert.deepEqual([...items].sort((a, b) => a.date.localeCompare(b.date)).map((i) => i.id), items.map((i) => i.id));
+
+    for (const t of [bill, pay, far]) await s.tx.deleteTransaction(t.id, HH);
+  });
+
+  test("indicador do dashboard e drill-down mostram o mesmo total de despesas", async () => {
+    const noneOf = (a: { children: { name: string; realizedCents: number }[] }) => a.children.find((c) => c.name === "Sem categoria")?.realizedCents ?? 0;
+    const before = (await s.analytics.getCategoryAnalysis(HH, { type: "DESPESA", categoryId: null, year: 2026, month: 11 }))!;
+    const uncategorized = await s.tx.createTransaction({ householdId: HH, userId, eventDate: d("2026-11-04"), description: "sem categoria", amountCents: -7000, kind: "EXPENSE", bankId: bankA });
+    const dash = await s.dashboard.getDashboardData(HH, 2026, 11);
+    const root = (await s.analytics.getCategoryAnalysis(HH, { type: "DESPESA", categoryId: null, year: 2026, month: 11 }))!;
+    assert.equal(dash.period.despesaRealizedCents, root.node.realizedCents, "indicador = drill-down");
+    assert.equal(root.node.realizedCents, before.node.realizedCents + 7000, "despesa sem categoria entra no total");
+    assert.equal(noneOf(root), noneOf(before) + 7000, "e aparece na linha 'Sem categoria'");
+    assert.equal(root.transactionCount, root.transactions.length);
+    await s.tx.deleteTransaction(uncategorized.id, HH);
+  });
+
+  test("drill-down de uma categoria traz os lançamentos dela e de outra família não", async () => {
+    const node = (await s.analytics.getCategoryAnalysis(HH, { type: "DESPESA", categoryId: foodCategoryId, year: 2026, month: 11 }))!;
+    assert.equal(node.node.name, "Mercado");
+    assert.deepEqual(node.path.map((p) => p.name), ["Despesas", "Mercado"]);
+    assert.equal(node.node.realizedCents, 30050); // 100,50 no débito + 200,00 no crédito
+    assert.equal(node.transactions.length, 2);
+    assert.equal(await s.analytics.getCategoryAnalysis(OTHER_HH, { type: "DESPESA", categoryId: foodCategoryId, year: 2026, month: 11 }), null);
   });
 });

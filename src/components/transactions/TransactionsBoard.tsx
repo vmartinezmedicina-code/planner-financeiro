@@ -74,6 +74,7 @@ export function TransactionsBoard({
   categoryPathById,
   members,
   defaultMemberId,
+  openNewOnLoad = false,
 }: {
   categories: CategoryOption[];
   banks: { id: string; name: string }[];
@@ -81,6 +82,7 @@ export function TransactionsBoard({
   categoryPathById: Record<string, string>;
   members: { id: string; name: string }[];
   defaultMemberId: string | null;
+  openNewOnLoad?: boolean;
 }) {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -92,7 +94,7 @@ export function TransactionsBoard({
   const [page, setPage] = useState(1);
   const [data, setData] = useState<ListResponse | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(openNewOnLoad);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [bulkCategorizeOpen, setBulkCategorizeOpen] = useState(false);
   const [bulkCategoryId, setBulkCategoryId] = useState("");

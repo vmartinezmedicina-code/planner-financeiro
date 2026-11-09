@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const year = Number(searchParams.get("year"));
   const month = Number(searchParams.get("month"));
-  if (!year || !month) return NextResponse.json({ error: "Parâmetros inválidos." }, { status: 400 });
+  if (!Number.isInteger(year) || !Number.isInteger(month) || year < 2000 || year > 2100 || month < 1 || month > 12) return NextResponse.json({ error: "Parâmetros inválidos." }, { status: 400 });
 
   const data = await getDashboardData(session.householdId, year, month);
   return NextResponse.json(data);
