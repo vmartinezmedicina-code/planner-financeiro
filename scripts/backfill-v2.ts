@@ -20,6 +20,23 @@ async function main() {
     if (r.count) console.log(`${model}: ${r.count} registro(s) ligados à família.`);
   }
 
+  // Registros criados pelo código ANTIGO no intervalo entre a migration e a
+  // publicação do código novo nascem com centavos zerados e tipo padrão.
+  // Mesmas regras do SQL de backfill; só tocam linhas que a V2 nunca gravou.
+  const fixes = [
+    `UPDATE "Transaction" SET "amountCents" = CAST(ROUND("amount" * 100) AS INTEGER) WHERE "amountCents" = 0 AND "amount" <> 0`,
+    `UPDATE "Transaction" SET "kind" = 'CARD_PURCHASE' WHERE "kind" = 'EXPENSE' AND "creditCardId" IS NOT NULL AND "transferGroupId" IS NULL`,
+    `UPDATE "Transaction" SET "kind" = 'INCOME' WHERE "kind" = 'EXPENSE' AND "creditCardId" IS NULL AND "amount" > 0 AND "transferGroupId" IS NULL`,
+    `UPDATE "Bank" SET "initialBalanceCents" = CAST(ROUND("initialBalance" * 100) AS INTEGER) WHERE "initialBalanceCents" = 0 AND "initialBalance" <> 0`,
+    `UPDATE "PlannedValue" SET "amountCents" = CAST(ROUND("amount" * 100) AS INTEGER) WHERE "amountCents" = 0 AND "amount" <> 0`,
+    `UPDATE "InstallmentPurchase" SET "totalAmountCents" = CAST(ROUND("totalAmount" * 100) AS INTEGER) WHERE "totalAmountCents" = 0 AND "totalAmount" <> 0`,
+    `UPDATE "Investment" SET "contributedAmountCents" = CAST(ROUND("contributedAmount" * 100) AS INTEGER) WHERE "contributedAmountCents" = 0 AND "contributedAmount" <> 0`,
+    `UPDATE "Investment" SET "currentValueCents" = CAST(ROUND("currentValue" * 100) AS INTEGER) WHERE "currentValueCents" = 0 AND "currentValue" <> 0`,
+  ];
+  let fixed = 0;
+  for (const sql of fixes) fixed += await prisma.$executeRawUnsafe(sql);
+  if (fixed) console.log(`${fixed} registro(s) do código antigo convertidos (centavos/tipo).`);
+
   const users = await prisma.user.findMany({ include: { member: true } });
   for (const u of users) {
     if (!u.member) {
