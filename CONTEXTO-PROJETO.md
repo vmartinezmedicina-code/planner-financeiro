@@ -42,7 +42,7 @@ Quatro cartões de total que abrem o detalhe ao clicar: Saldo em contas (por con
 
 ## Evolução V2 (em andamento)
 Especificação e plano em `docs/` (`ARCHITECTURE-V2.md`, `DATA-MODEL-V2.md`, `ROADMAP-V2.md`, `DEPLOY-V2-FASE1.md`).
-Fase 1 (fundação) está pronta no código e **ainda não aplicada em produção**:
+Fase 1 (fundação) está **em produção desde 08/11/2026** (migrations `v2_foundation` e `v2_backfill` aplicadas no Turso; conferência com `npm run db:check-v2`):
 - Dinheiro em centavos inteiros (`*Cents`, `src/lib/money.ts`); os campos `Float` continuam gravados como espelho.
 - `Transaction.kind` (INCOME, EXPENSE, CARD_PURCHASE, CARD_PAYMENT, TRANSFER, ADJUSTMENT) e `source`; regras em `src/lib/finance/kinds.ts`; toda escrita passa por `src/lib/finance/transactionService.ts`.
 - Família: `Household`/`HouseholdMember`; `householdId` em todos os registros e em toda rota; `memberId` opcional no lançamento.
