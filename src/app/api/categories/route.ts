@@ -13,7 +13,7 @@ const createSchema = z.object({
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
-  const categories = await prisma.category.findMany({ orderBy: { order: "asc" } });
+  const categories = await prisma.category.findMany({ where: { householdId: session.householdId }, orderBy: { order: "asc" } });
   return NextResponse.json(categories);
 }
 
@@ -27,10 +27,15 @@ export async function POST(req: NextRequest) {
 
   const { name, type, parentId } = parsed.data;
 
-  const siblingsCount = await prisma.category.count({ where: { parentId: parentId ?? null } });
+  if (parentId) {
+    const parent = await prisma.category.findFirst({ where: { id: parentId, householdId: session.householdId }, select: { id: true } });
+    if (!parent) return NextResponse.json({ error: "Categoria pai não encontrada." }, { status: 404 });
+  }
+
+  const siblingsCount = await prisma.category.count({ where: { householdId: session.householdId, parentId: parentId ?? null } });
 
   const category = await prisma.category.create({
-    data: { name, type, parentId: parentId ?? null, order: siblingsCount },
+    data: { name, type, parentId: parentId ?? null, order: siblingsCount, householdId: session.householdId },
   });
 
   return NextResponse.json(category, { status: 201 });

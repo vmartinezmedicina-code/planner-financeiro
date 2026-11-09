@@ -41,13 +41,13 @@ export async function POST(req: NextRequest) {
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
 
-  const financialContext = await buildFinancialContext();
+  const financialContext = await buildFinancialContext(session.householdId);
 
   const client = new Anthropic();
 
   try {
     const response = await client.messages.create({
-      model: "claude-opus-5",
+      model: process.env.ANTHROPIC_MODEL ?? "claude-opus-5",
       max_tokens: 2048,
       system: [
         { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },

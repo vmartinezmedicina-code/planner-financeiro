@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import type { CategoryOption } from "@/lib/categories";
-import { toDateInputValue } from "@/lib/format";
+import { todayInputValue } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL } from "@/lib/paymentMethod";
 
 export type PaymentMethodValue = "DEBITO" | "CREDITO" | "PIX" | "DINHEIRO";
@@ -16,6 +16,7 @@ export type TransactionFormValues = {
   paymentMethod: PaymentMethodValue;
   bankId: string;
   creditCardId: string;
+  memberId: string;
   description: string;
   amount: string;
   kind: "receita" | "despesa";
@@ -27,14 +28,15 @@ export type TransactionFormValues = {
 
 const PAYMENT_METHODS: PaymentMethodValue[] = ["DEBITO", "CREDITO", "PIX", "DINHEIRO"];
 
-export function emptyTransactionForm(): TransactionFormValues {
+export function emptyTransactionForm(defaultMemberId = ""): TransactionFormValues {
   return {
-    eventDate: toDateInputValue(new Date()),
+    eventDate: todayInputValue(),
     settlementDate: "",
     categoryId: "",
     paymentMethod: "DEBITO",
     bankId: "",
     creditCardId: "",
+    memberId: defaultMemberId,
     description: "",
     amount: "",
     kind: "despesa",
@@ -49,6 +51,7 @@ export function TransactionForm({
   categories,
   banks,
   creditCards,
+  members,
   initial,
   onClose,
   onSubmit,
@@ -56,6 +59,7 @@ export function TransactionForm({
   categories: CategoryOption[];
   banks: { id: string; name: string }[];
   creditCards: { id: string; name: string }[];
+  members: { id: string; name: string }[];
   initial: TransactionFormValues;
   onClose: () => void;
   onSubmit: (values: TransactionFormValues) => Promise<void>;
@@ -248,6 +252,24 @@ export function TransactionForm({
             {banks.length === 0 && (
               <span className="text-[11px] text-muted">Nenhum banco cadastrado — cadastre em "Bancos".</span>
             )}
+          </div>
+        )}
+
+        {members.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted">De quem é (opcional)</label>
+            <select
+              value={values.memberId}
+              onChange={(e) => set("memberId", e.target.value)}
+              className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="">Família (sem membro)</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
           </div>
         )}
 

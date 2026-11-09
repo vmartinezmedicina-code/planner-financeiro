@@ -11,16 +11,16 @@ Legenda: ☐ a fazer · ◐ em andamento · ☑ feito
 - ☑ `docs/ARCHITECTURE-V2.md`, `docs/DATA-MODEL-V2.md`, `docs/ROADMAP-V2.md`.
 - ☑ Runner de testes (`node:test` via `tsx`, sem dependência nova).
 
-## Fase 1 — Fundação financeira
-1.1 ☐ `src/lib/money.ts` + testes (reais↔centavos, soma, parcelas, arredondamento).
-1.2 ☐ Schema aditivo + migrations (`v2_foundation`, `v2_backfill`) + script `db:backfill-v2`.
-1.3 ☐ `TransactionKind`/`TransactionSource` + `src/lib/finance/kinds.ts`; escrita dupla (`amount` e `amountCents`) em todas as rotas que gravam dinheiro; leitura de planejamento/dashboard filtra kinds de consumo.
-1.4 ☐ Família: `Household`/`HouseholdMember`, `householdId` na sessão e nas rotas (escopo), membro opcional no lançamento, gestão de membros em **Conta**.
-1.5 ☐ Transferências: `POST /api/transfers` (par de lançamentos `TRANSFER`), ação em **Bancos**.
-1.6 ☐ Faturas: `CreditCardInvoice`, `invoiceService` (período/fechamento/vencimento, status derivado), atribuição automática ao criar compra no cartão, backfill, listagem em **Cartões**.
-1.7 ☐ Pagar fatura: `POST /api/invoices/:id/pay` (cria `CARD_PAYMENT`, marca fatura paga), dashboard usa faturas.
-1.8 ☐ Sessão: `sessionVersion` no JWT; trocar senha invalida sessões anteriores (janela ≤ 60 s de cache).
-1.9 ☐ Testes de domínio: fechamento antes/depois, virada dez/jan, parcelas, pagamento, transferência, saldo.
+## Fase 1 — Fundação financeira ☑ (código pronto; falta aplicar em produção)
+1.1 ☑ `src/lib/money.ts` + testes (reais↔centavos, soma, parcelas, arredondamento).
+1.2 ☑ Schema aditivo + migrations (`v2_foundation`, `v2_backfill`) + script `db:backfill-v2`.
+1.3 ☑ `TransactionKind`/`TransactionSource` + `src/lib/finance/kinds.ts`; escrita dupla (`amount` e `amountCents`) em todas as rotas que gravam dinheiro; leitura de planejamento/dashboard filtra kinds de consumo.
+1.4 ☑ Família: `Household`/`HouseholdMember`, `householdId` na sessão e nas rotas (escopo), membro opcional no lançamento, gestão de membros em **Conta**.
+1.5 ☑ Transferências: `POST /api/transfers` (par de lançamentos `TRANSFER`), ação em **Bancos**.
+1.6 ☑ Faturas: `CreditCardInvoice`, `invoiceService` (período/fechamento/vencimento, status derivado), atribuição automática ao criar compra no cartão, backfill, listagem em **Cartões**.
+1.7 ☑ Pagar fatura: `POST /api/invoices/:id/pay` (cria `CARD_PAYMENT`, marca fatura paga), dashboard usa faturas.
+1.8 ☑ Sessão: `sessionVersion` no JWT; trocar senha invalida sessões anteriores (janela ≤ 60 s de cache).
+1.9 ☑ Testes de domínio: fechamento antes/depois, virada dez/jan, parcelas, pagamento, transferência, saldo.
 
 ## Fase 2 — Dashboard 2.0
 - Cabeçalho `‹ Mês ›` com "hoje" e "+ lançamento"; 4 KPIs principais; KPIs secundários discretos.

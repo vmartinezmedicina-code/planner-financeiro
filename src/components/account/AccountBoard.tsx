@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { KeyRound } from "lucide-react";
+import { MembersSection, type Member } from "./MembersSection";
 
-export function AccountBoard({ name, email }: { name: string; email: string }) {
+export function AccountBoard({ name, email, members }: { name: string; email: string; members: Member[] }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -74,8 +75,10 @@ export function AccountBoard({ name, email }: { name: string; email: string }) {
       </form>
 
       <p className="text-xs text-muted">
-        Após 5 tentativas erradas de login, a conta fica bloqueada por 15 minutos.
+        Após 5 tentativas erradas de login, a conta fica bloqueada por 15 minutos. Trocar a senha encerra a sessão nos outros aparelhos.
       </p>
+
+      <MembersSection initial={members} />
     </div>
   );
 }

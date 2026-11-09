@@ -3,6 +3,9 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCategoryOptions } from "@/lib/categories";
 import { PAYMENT_METHOD_LABEL } from "@/lib/paymentMethod";
+import { KIND_LABEL, type TransactionKindValue } from "@/lib/finance/kinds";
+import { fromCents } from "@/lib/money";
+import { Prisma } from "@prisma/client";
 
 function csvEscape(value: string) {
   if (/[",\n;]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
@@ -17,7 +20,7 @@ export async function GET(req: NextRequest) {
   const startDate = searchParams.get("startDate");
   const endDate = searchParams.get("endDate");
 
-  const where: Record<string, unknown> = {};
+  const where: Prisma.TransactionWhereInput = { householdId: session.householdId };
   if (startDate || endDate) {
     where.eventDate = {
       ...(startDate ? { gte: new Date(startDate) } : {}),
@@ -26,18 +29,24 @@ export async function GET(req: NextRequest) {
   }
 
   const [items, categories] = await Promise.all([
-    prisma.transaction.findMany({ where, orderBy: { eventDate: "desc" }, include: { bank: true, creditCardRef: true } }),
-    getCategoryOptions(),
+    prisma.transaction.findMany({
+      where,
+      orderBy: { eventDate: "desc" },
+      include: { bank: true, creditCardRef: true, member: { select: { name: true } } },
+    }),
+    getCategoryOptions(session.householdId),
   ]);
   const categoryLabel = new Map(categories.map((c) => [c.id, c.label]));
 
   const header = [
     "Data do evento",
     "Data da efetivação",
+    "Tipo",
     "Categoria",
     "Forma de Pagamento",
     "Instituição Financeira",
     "Cartão de Crédito",
+    "Membro",
     "Descrição",
     "Valor",
     "Status",
@@ -47,12 +56,14 @@ export async function GET(req: NextRequest) {
   const rows = items.map((t) => [
     t.eventDate.toISOString().slice(0, 10),
     t.settlementDate ? t.settlementDate.toISOString().slice(0, 10) : "",
+    KIND_LABEL[t.kind as TransactionKindValue],
     t.categoryId ? categoryLabel.get(t.categoryId) ?? "" : "",
     PAYMENT_METHOD_LABEL[t.paymentMethod],
     t.bank?.name ?? "",
     t.creditCardRef?.name ?? "",
+    t.member?.name ?? "",
     t.description,
-    t.amount.toString().replace(".", ","),
+    fromCents(t.amountCents).toFixed(2).replace(".", ","),
     t.status,
     t.isRecurring ? "Sim" : "Não",
   ]);

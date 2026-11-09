@@ -14,6 +14,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Parâmetros year/month inválidos." }, { status: 400 });
   }
 
-  const data = await getPlanningData(year, month);
+  const data = await getPlanningData(session.householdId, year, month);
   return NextResponse.json(data);
 }

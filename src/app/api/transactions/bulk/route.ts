@@ -3,9 +3,10 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { TransactionStatus } from "@prisma/client";
+import { deleteTransactions } from "@/lib/finance/transactionService";
 
 const schema = z.object({
-  ids: z.array(z.string()).min(1),
+  ids: z.array(z.string()).min(1).max(500),
   action: z.enum(["delete", "categorize", "status", "recurring"]),
   categoryId: z.string().nullable().optional(),
   status: z.nativeEnum(TransactionStatus).optional(),
@@ -21,15 +22,18 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
 
   const { ids, action } = parsed.data;
+  const scoped = { id: { in: ids }, householdId: session.householdId };
 
   if (action === "delete") {
-    await prisma.transaction.deleteMany({ where: { id: { in: ids } } });
+    // Passa pelo serviço para manter faturas/transferências consistentes.
+    const r = await deleteTransactions(ids, session.householdId);
+    return NextResponse.json({ ok: true, deleted: r.deleted });
   } else if (action === "categorize") {
-    await prisma.transaction.updateMany({ where: { id: { in: ids } }, data: { categoryId: parsed.data.categoryId || null } });
+    await prisma.transaction.updateMany({ where: scoped, data: { categoryId: parsed.data.categoryId || null } });
   } else if (action === "status" && parsed.data.status) {
-    await prisma.transaction.updateMany({ where: { id: { in: ids } }, data: { status: parsed.data.status } });
+    await prisma.transaction.updateMany({ where: scoped, data: { status: parsed.data.status } });
   } else if (action === "recurring") {
-    await prisma.transaction.updateMany({ where: { id: { in: ids } }, data: { isRecurring: parsed.data.isRecurring ?? true } });
+    await prisma.transaction.updateMany({ where: scoped, data: { isRecurring: parsed.data.isRecurring ?? true } });
   }
 
   return NextResponse.json({ ok: true });

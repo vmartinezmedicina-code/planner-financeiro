@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCategoryOptions } from "@/lib/categories";
+import { todayInputValue } from "@/lib/format";
 
 const bodySchema = z.object({
   text: z.string().min(1).max(500),
@@ -74,13 +75,12 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
 
   const [categories, banks, creditCards] = await Promise.all([
-    getCategoryOptions(),
-    prisma.bank.findMany({ select: { id: true, name: true } }),
-    prisma.creditCard.findMany({ select: { id: true, name: true } }),
+    getCategoryOptions(session.householdId),
+    prisma.bank.findMany({ where: { householdId: session.householdId }, select: { id: true, name: true } }),
+    prisma.creditCard.findMany({ where: { householdId: session.householdId }, select: { id: true, name: true } }),
   ]);
 
-  const today = new Date();
-  const todayIso = today.toISOString().slice(0, 10);
+  const todayIso = todayInputValue();
 
   const categoryList = categories
     .map((c) => `${c.id} | ${c.type} | ${c.label}`)
@@ -115,7 +115,7 @@ Regras importantes:
 
   try {
     const response = await client.messages.create({
-      model: "claude-opus-5",
+      model: process.env.ANTHROPIC_MODEL ?? "claude-opus-5",
       max_tokens: 1024,
       output_config: {
         effort: "low",

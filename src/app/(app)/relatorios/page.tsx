@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/auth";
 import { getPlanningData, CategoryNode } from "@/lib/planning";
 import { ReportBoard } from "@/components/reports/ReportBoard";
 
@@ -14,12 +16,15 @@ export default async function RelatoriosPage({
 }: {
   searchParams: Promise<{ year?: string; month?: string }>;
 }) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+
   const params = await searchParams;
   const now = new Date();
   const year = Number(params.year) || now.getFullYear();
   const month = Number(params.month) || now.getMonth() + 1;
 
-  const planning = await getPlanningData(year, month);
+  const planning = await getPlanningData(session.householdId, year, month);
 
   return (
     <ReportBoard

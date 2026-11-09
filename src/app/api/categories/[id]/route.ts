@@ -18,6 +18,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
 
+  const existing = await prisma.category.findFirst({ where: { id, householdId: session.householdId }, select: { id: true } });
+  if (!existing) return NextResponse.json({ error: "Categoria não encontrada." }, { status: 404 });
+
   const category = await prisma.category.update({ where: { id }, data: parsed.data });
   return NextResponse.json(category);
 }
@@ -27,6 +30,9 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!session) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   const { id } = await params;
+  const existing = await prisma.category.findFirst({ where: { id, householdId: session.householdId }, select: { id: true } });
+  if (!existing) return NextResponse.json({ error: "Categoria não encontrada." }, { status: 404 });
+
   await prisma.category.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

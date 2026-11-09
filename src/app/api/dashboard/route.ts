@@ -11,6 +11,6 @@ export async function GET(req: NextRequest) {
   const month = Number(searchParams.get("month"));
   if (!year || !month) return NextResponse.json({ error: "Parâmetros inválidos." }, { status: 400 });
 
-  const data = await getDashboardData(year, month);
+  const data = await getDashboardData(session.householdId, year, month);
   return NextResponse.json(data);
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { getSession, setSessionCookie, invalidateSessionCache } from "@/lib/auth";
 
 const schema = z.object({
   currentPassword: z.string().min(1),
@@ -45,9 +45,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "A nova senha precisa ser diferente da atual." }, { status: 400 });
   }
 
-  await prisma.user.update({
+  // Nova senha + nova versão de sessão: todos os cookies antigos (outros
+  // aparelhos) deixam de valer. Este aparelho recebe um cookie novo na hora.
+  const updated = await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash: await bcrypt.hash(newPassword, 12), failedLogins: 0, lockedUntil: null },
+    data: {
+      passwordHash: await bcrypt.hash(newPassword, 12),
+      failedLogins: 0,
+      lockedUntil: null,
+      sessionVersion: { increment: 1 },
+    },
+  });
+  invalidateSessionCache(user.id);
+  await setSessionCookie({
+    userId: updated.id,
+    name: updated.name,
+    email: updated.email,
+    avatarColor: updated.avatarColor,
+    sv: updated.sessionVersion,
   });
 
   return NextResponse.json({ ok: true });

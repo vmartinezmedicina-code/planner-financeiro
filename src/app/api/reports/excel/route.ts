@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { getPlanningData, CategoryNode } from "@/lib/planning";
 import { MONTH_NAMES } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL } from "@/lib/paymentMethod";
+import { KIND_LABEL, type TransactionKindValue } from "@/lib/finance/kinds";
+import { fromCents } from "@/lib/money";
 
 export const runtime = "nodejs";
 
@@ -34,12 +36,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Parâmetros year/month inválidos." }, { status: 400 });
   }
 
-  const planning = await getPlanningData(year, month);
+  const planning = await getPlanningData(session.householdId, year, month);
   const start = new Date(Date.UTC(year, month - 1, 1));
   const end = new Date(Date.UTC(year, month, 1));
   const transactions = await prisma.transaction.findMany({
-    where: { eventDate: { gte: start, lt: end } },
-    include: { category: true, bank: true, creditCardRef: true },
+    where: { householdId: session.householdId, eventDate: { gte: start, lt: end } },
+    include: { category: true, bank: true, creditCardRef: true, member: { select: { name: true } } },
     orderBy: { eventDate: "asc" },
   });
 
@@ -88,7 +90,9 @@ export async function GET(req: NextRequest) {
     { header: "Data", key: "date", width: 12 },
     { header: "Descrição", key: "desc", width: 36 },
     { header: "Categoria", key: "cat", width: 28 },
+    { header: "Tipo", key: "kind", width: 18 },
     { header: "Forma", key: "pay", width: 12 },
+    { header: "Membro", key: "member", width: 16 },
     { header: "Banco / Cartão", key: "where", width: 20 },
     { header: "Valor", key: "amount", width: 16 },
     { header: "Status", key: "status", width: 12 },
@@ -99,9 +103,11 @@ export async function GET(req: NextRequest) {
       date: t.eventDate,
       desc: t.description,
       cat: t.category?.name ?? "Sem categoria",
+      kind: KIND_LABEL[t.kind as TransactionKindValue],
       pay: PAYMENT_METHOD_LABEL[t.paymentMethod],
+      member: t.member?.name ?? "",
       where: t.bank?.name ?? t.creditCardRef?.name ?? "",
-      amount: t.amount,
+      amount: fromCents(t.amountCents),
       status: t.status,
     });
   }

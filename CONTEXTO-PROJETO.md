@@ -40,6 +40,18 @@ User (inclui `failedLogins`, `lockedUntil`), Bank (`initialBalance`), CreditCard
 ## Dashboard atual
 Quatro cartões de total que abrem o detalhe ao clicar: Saldo em contas (por conta), Receitas do mês e Despesas do mês (por categoria → subcategoria), Cartões de crédito (fatura em aberto por cartão). Abaixo: evolução de 6 meses, parcelas dos próximos 6 meses e o "Extrato mensal consolidado" recolhível, onde fica o seletor de mês.
 
+## Evolução V2 (em andamento)
+Especificação e plano em `docs/` (`ARCHITECTURE-V2.md`, `DATA-MODEL-V2.md`, `ROADMAP-V2.md`, `DEPLOY-V2-FASE1.md`).
+Fase 1 (fundação) está pronta no código e **ainda não aplicada em produção**:
+- Dinheiro em centavos inteiros (`*Cents`, `src/lib/money.ts`); os campos `Float` continuam gravados como espelho.
+- `Transaction.kind` (INCOME, EXPENSE, CARD_PURCHASE, CARD_PAYMENT, TRANSFER, ADJUSTMENT) e `source`; regras em `src/lib/finance/kinds.ts`; toda escrita passa por `src/lib/finance/transactionService.ts`.
+- Família: `Household`/`HouseholdMember`; `householdId` em todos os registros e em toda rota; `memberId` opcional no lançamento.
+- Faturas: `CreditCardInvoice` (`src/lib/invoices/`), fechamento pelo `closingDay`, pagar fatura cria `CARD_PAYMENT`.
+- Transferências entre contas (`src/lib/finance/transfers.ts`, `POST /api/transfers`).
+- Sessão com `sessionVersion`: trocar a senha derruba as outras sessões.
+- Testes: `npm test` (node:test + tsx), incluindo integração contra SQLite temporário.
+- Migrations da V2 são escritas à mão (só `ADD COLUMN`/`CREATE`), nunca o `RedefineTables` do Prisma.
+
 ## Estado atual (08/11/2026)
 Funcionando em produção: login com bloqueio, troca de senha, planejamento, lançamentos (inclusive por texto/IA), bancos, cartões, parcelamentos, investimentos, relatórios (Excel/PDF), assistente, dashboard novo.
 

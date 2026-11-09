@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
     name: user.name,
     email: user.email,
     avatarColor: user.avatarColor,
+    sv: user.sessionVersion,
   });
 
   return NextResponse.json({ ok: true });

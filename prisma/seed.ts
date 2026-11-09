@@ -1,6 +1,7 @@
 import { CategoryType } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { prisma } from "../src/lib/prisma";
+import { ensureDefaultHousehold, resolveUserScope } from "../src/lib/household/householdService";
 // Reaproveita o client de src/lib/prisma.ts: ele já escolhe automaticamente
 // entre o engine clássico (SQLite local) e o adapter libSQL (Turso), conforme
 // a DATABASE_URL definida no ambiente em que este script rodar.
@@ -15,25 +16,26 @@ async function upsertUser(name: string, email: string, password: string, avatarC
 }
 
 async function createCategoryTree(
+  householdId: string,
   type: CategoryType,
   nodes: { name: string; children?: { name: string; children?: { name: string }[] }[] }[]
 ) {
   let order = 0;
   for (const node of nodes) {
     const parent = await prisma.category.create({
-      data: { name: node.name, type, order: order++ },
+      data: { name: node.name, type, order: order++, householdId },
     });
     if (node.children) {
       let childOrder = 0;
       for (const child of node.children) {
         const created = await prisma.category.create({
-          data: { name: child.name, type, order: childOrder++, parentId: parent.id },
+          data: { name: child.name, type, order: childOrder++, parentId: parent.id, householdId },
         });
         if (child.children) {
           let grandOrder = 0;
           for (const grand of child.children) {
             await prisma.category.create({
-              data: { name: grand.name, type, order: grandOrder++, parentId: created.id },
+              data: { name: grand.name, type, order: grandOrder++, parentId: created.id, householdId },
             });
           }
         }
@@ -49,16 +51,19 @@ async function main() {
   const u2email = process.env.SEED_USER2_EMAIL ?? "esposa@planner.local";
   const u2pass = process.env.SEED_USER2_PASSWORD ?? "mude-esta-senha-2";
 
-  await upsertUser("Você", u1email, u1pass, "#6366f1");
-  await upsertUser("Sua Esposa", u2email, u2pass, "#ec4899");
+  const householdId = await ensureDefaultHousehold();
+  const user1 = await upsertUser("Você", u1email, u1pass, "#6366f1");
+  const user2 = await upsertUser("Sua Esposa", u2email, u2pass, "#ec4899");
+  // V2: liga os usuarios a familia e cria um membro financeiro para cada um.
+  for (const u of [user1, user2]) await resolveUserScope(u.id);
 
-  const existingCategories = await prisma.category.count();
+  const existingCategories = await prisma.category.count({ where: { householdId } });
   if (existingCategories > 0) {
     console.log("Categorias já existem, pulando seed de categorias.");
   } else {
     console.log("Criando categorias padrão...");
 
-    await createCategoryTree(CategoryType.RECEITA, [
+    await createCategoryTree(householdId, CategoryType.RECEITA, [
       {
         name: "Receitas Mensais",
         children: [
@@ -70,7 +75,7 @@ async function main() {
       },
     ]);
 
-    await createCategoryTree(CategoryType.DESPESA, [
+    await createCategoryTree(householdId, CategoryType.DESPESA, [
       {
         name: "Despesas Mensais",
         children: [

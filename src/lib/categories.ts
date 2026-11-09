@@ -6,8 +6,8 @@ export type CategoryOption = {
   type: "RECEITA" | "DESPESA";
 };
 
-export async function getCategoryOptions(): Promise<CategoryOption[]> {
-  const categories = await prisma.category.findMany({ orderBy: { order: "asc" } });
+export async function getCategoryOptions(householdId: string): Promise<CategoryOption[]> {
+  const categories = await prisma.category.findMany({ where: { householdId }, orderBy: { order: "asc" } });
   const byId = new Map(categories.map((c) => [c.id, c]));
 
   function pathFor(id: string): string {

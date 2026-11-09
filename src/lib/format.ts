@@ -36,3 +36,15 @@ export function toDateInputValue(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
   return d.toISOString().slice(0, 10);
 }
+
+const APP_TIME_ZONE = "America/Sao_Paulo";
+
+/** Data de hoje (YYYY-MM-DD) no fuso do app, para valor padrao de campos de data. */
+export function todayInputValue(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+/** Hoje no fuso do app, como Date a meia-noite UTC (mesma convencao das datas gravadas). */
+export function todayAsUtcDate(now: Date = new Date()): Date {
+  return new Date(todayInputValue(now) + "T00:00:00.000Z");
+}

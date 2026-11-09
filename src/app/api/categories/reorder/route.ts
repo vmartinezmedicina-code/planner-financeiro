@@ -15,8 +15,11 @@ export async function PATCH(req: NextRequest) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
 
+  // updateMany com householdId garante que só categorias da família sejam tocadas.
   await prisma.$transaction(
-    parsed.data.updates.map((u) => prisma.category.update({ where: { id: u.id }, data: { order: u.order } }))
+    parsed.data.updates.map((u) =>
+      prisma.category.updateMany({ where: { id: u.id, householdId: session.householdId }, data: { order: u.order } })
+    )
   );
 
   return NextResponse.json({ ok: true });

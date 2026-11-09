@@ -1,15 +1,12 @@
-import { prisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/auth";
+import { listBanksWithBalance } from "@/lib/finance/banks";
 import { BanksBoard } from "@/components/banks/BanksBoard";
 
 export default async function BancosPage() {
-  const banks = await prisma.bank.findMany({ orderBy: { order: "asc" } });
+  const session = await getSession();
+  if (!session) redirect("/login");
 
-  const withBalance = await Promise.all(
-    banks.map(async (b) => {
-      const agg = await prisma.transaction.aggregate({ where: { bankId: b.id }, _sum: { amount: true } });
-      return { ...b, currentBalance: b.initialBalance + (agg._sum.amount ?? 0) };
-    })
-  );
-
-  return <BanksBoard initial={withBalance} />;
+  const banks = await listBanksWithBalance(session.householdId);
+  return <BanksBoard initial={banks} />;
 }

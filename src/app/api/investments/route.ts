@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { toCents, fromCents } from "@/lib/money";
 
 const createSchema = z.object({
   product: z.string().min(1),
@@ -17,6 +18,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   const investments = await prisma.investment.findMany({
+    where: { householdId: session.householdId },
     include: { user: { select: { name: true } } },
     orderBy: { contributionDate: "desc" },
   });
@@ -32,15 +34,20 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
 
   const d = parsed.data;
+  const contributedCents = toCents(d.contributedAmount);
+  const currentCents = toCents(d.currentValue);
   const investment = await prisma.investment.create({
     data: {
       product: d.product,
       institution: d.institution,
-      contributedAmount: d.contributedAmount,
+      contributedAmount: fromCents(contributedCents),
+      contributedAmountCents: contributedCents,
       contributionDate: new Date(d.contributionDate),
-      currentValue: d.currentValue,
+      currentValue: fromCents(currentCents),
+      currentValueCents: currentCents,
       notes: d.notes || null,
       userId: session.userId,
+      householdId: session.householdId,
     },
   });
 

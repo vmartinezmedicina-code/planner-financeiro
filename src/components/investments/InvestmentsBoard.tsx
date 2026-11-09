@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { Plus, Pencil, Trash2, X, TrendingUp, TrendingDown } from "lucide-react";
-import { formatCurrency, formatDate, toDateInputValue } from "@/lib/format";
+import { formatCurrency, formatDate, toDateInputValue, todayInputValue } from "@/lib/format";
 
 type Investment = {
   id: string;
@@ -30,7 +30,7 @@ function emptyForm(): FormValues {
     product: "",
     institution: "",
     contributedAmount: "",
-    contributionDate: toDateInputValue(new Date()),
+    contributionDate: todayInputValue(),
     currentValue: "",
     notes: "",
   };

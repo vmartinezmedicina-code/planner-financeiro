@@ -17,9 +17,10 @@ import {
   X,
   Sparkles,
 } from "lucide-react";
-import { formatCurrency, formatDate, toDateInputValue } from "@/lib/format";
+import { formatCurrency, formatDate, toDateInputValue, todayInputValue } from "@/lib/format";
 import type { CategoryOption } from "@/lib/categories";
 import { PAYMENT_METHOD_LABEL } from "@/lib/paymentMethod";
+import { KIND_LABEL, isConsumption, type TransactionKindValue } from "@/lib/finance/kinds";
 import { TransactionForm, TransactionFormValues, PaymentMethodValue, emptyTransactionForm } from "./TransactionForm";
 
 type Transaction = {
@@ -35,6 +36,9 @@ type Transaction = {
   creditCardRef: { id: string; name: string } | null;
   description: string;
   amount: number;
+  kind: TransactionKindValue;
+  memberId: string | null;
+  member: { id: string; name: string; color: string } | null;
   status: "PENDENTE" | "PAGO" | "CONFIRMADO";
   isRecurring: boolean;
   installmentNumber: number | null;
@@ -68,17 +72,22 @@ export function TransactionsBoard({
   banks,
   creditCards,
   categoryPathById,
+  members,
+  defaultMemberId,
 }: {
   categories: CategoryOption[];
   banks: { id: string; name: string }[];
   creditCards: { id: string; name: string }[];
   categoryPathById: Record<string, string>;
+  members: { id: string; name: string }[];
+  defaultMemberId: string | null;
 }) {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [bankId, setBankId] = useState("Todas");
   const [creditCardId, setCreditCardId] = useState("Todos");
   const [status, setStatus] = useState("Todos");
+  const [kindFilter, setKindFilter] = useState("Todos");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<ListResponse | null>(null);
@@ -103,6 +112,7 @@ export function TransactionsBoard({
     if (bankId !== "Todas") params.set("bankId", bankId);
     if (creditCardId !== "Todos") params.set("creditCardId", creditCardId);
     if (status !== "Todos") params.set("status", status);
+    if (kindFilter !== "Todos") params.set("kind", kindFilter);
     if (search) params.set("search", search);
     params.set("page", String(page));
     const res = await fetch(`/api/transactions?${params.toString()}`);
@@ -111,7 +121,7 @@ export function TransactionsBoard({
       setData(json);
       setSelected(new Set());
     }
-  }, [startDate, endDate, bankId, creditCardId, status, search, page]);
+  }, [startDate, endDate, bankId, creditCardId, status, kindFilter, search, page]);
 
   useEffect(() => {
     load();
@@ -123,6 +133,7 @@ export function TransactionsBoard({
     setBankId("Todas");
     setCreditCardId("Todos");
     setStatus("Todos");
+    setKindFilter("Todos");
     setSearch("");
     setPage(1);
   }
@@ -171,12 +182,13 @@ export function TransactionsBoard({
       }
       setEditing(null);
       setQuickPrefill({
-        eventDate: json.eventDate || toDateInputValue(new Date()),
+        eventDate: json.eventDate || todayInputValue(),
         settlementDate: json.settlementDate || "",
         categoryId: json.categoryId || "",
         paymentMethod: json.paymentMethod || "DEBITO",
         bankId: json.bankId || "",
         creditCardId: json.creditCardId || "",
+        memberId: defaultMemberId ?? "",
         description: json.description || quickText.trim(),
         amount: json.amount ? String(json.amount) : "",
         kind: json.kind === "receita" ? "receita" : "despesa",
@@ -209,6 +221,7 @@ export function TransactionsBoard({
           purchaseDate: values.eventDate,
           categoryId: values.categoryId || null,
           creditCardId: values.creditCardId,
+          memberId: values.memberId || null,
         }),
       });
       setFormOpen(false);
@@ -224,10 +237,12 @@ export function TransactionsBoard({
       paymentMethod: values.paymentMethod,
       bankId: values.bankId || null,
       creditCardId: values.creditCardId || null,
+      memberId: values.memberId || null,
       description: values.description,
       amount,
       status: values.status,
       isRecurring: values.isRecurring,
+      ...(quickPrefill && !values.id ? { source: "TEXT_AI" } : {}),
     };
 
     if (values.id) {
@@ -247,9 +262,15 @@ export function TransactionsBoard({
     load();
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Excluir este lançamento?")) return;
-    await fetch(`/api/transactions/${id}`, { method: "DELETE" });
+  async function handleDelete(t: Transaction) {
+    const msg =
+      t.kind === "TRANSFER"
+        ? "Excluir esta transferência? Os dois lados (saída e entrada) serão removidos."
+        : t.kind === "CARD_PAYMENT"
+          ? "Excluir este pagamento de fatura? A fatura volta a ficar em aberto."
+          : "Excluir este lançamento?";
+    if (!confirm(msg)) return;
+    await fetch(`/api/transactions/${t.id}`, { method: "DELETE" });
     load();
   }
 
@@ -352,6 +373,7 @@ export function TransactionsBoard({
         paymentMethod: editing.paymentMethod,
         bankId: editing.bankId ?? "",
         creditCardId: editing.creditCardId ?? "",
+        memberId: editing.memberId ?? "",
         description: editing.description,
         amount: String(Math.abs(editing.amount)),
         kind: editing.amount < 0 ? "despesa" : "receita",
@@ -360,7 +382,7 @@ export function TransactionsBoard({
         isInstallment: false,
         installmentsCount: "2",
       }
-    : quickPrefill ?? emptyTransactionForm();
+    : quickPrefill ?? emptyTransactionForm(defaultMemberId ?? "");
 
   return (
     <div className="flex flex-col gap-4">
@@ -499,6 +521,24 @@ export function TransactionsBoard({
             <option value="CONFIRMADO">Confirmado</option>
           </select>
         </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-muted">Tipo</label>
+          <select
+            value={kindFilter}
+            onChange={(e) => {
+              setKindFilter(e.target.value);
+              setPage(1);
+            }}
+            className="rounded-lg border border-border bg-surface-muted px-2.5 py-1.5 text-sm outline-none"
+          >
+            <option>Todos</option>
+            {(Object.keys(KIND_LABEL) as TransactionKindValue[]).map((k) => (
+              <option key={k} value={k}>
+                {KIND_LABEL[k]}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="flex flex-col gap-1 flex-1 min-w-[160px]">
           <label className="text-xs font-medium text-muted">Buscar / relatório</label>
           <div className="relative">
@@ -622,7 +662,9 @@ export function TransactionsBoard({
                   {t.settlementDate ? formatDate(t.settlementDate) : "—"}
                 </td>
                 <td className="p-2.5 max-w-[220px]">
-                  {t.categoryId ? (
+                  {!isConsumption(t.kind) ? (
+                    <span className="text-xs text-muted bg-surface-muted rounded px-1.5 py-0.5">{KIND_LABEL[t.kind]}</span>
+                  ) : t.categoryId ? (
                     <span className="text-xs">{categoryPathById[t.categoryId] ?? t.category?.name}</span>
                   ) : (
                     <span className="text-xs text-warning-fg bg-warning-bg rounded px-1.5 py-0.5">Sem categoria</span>
@@ -642,13 +684,24 @@ export function TransactionsBoard({
                 <td className="p-2.5 whitespace-nowrap text-muted">{t.creditCardRef?.name ?? "—"}</td>
                 <td className="p-2.5 max-w-[240px]">
                   <span className="truncate block">{t.description}</span>
+                  {t.member && (
+                    <span className="text-[10px] text-muted bg-surface-muted rounded px-1.5 py-0.5 mt-0.5 mr-1 inline-flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: t.member.color }} />
+                      {t.member.name}
+                    </span>
+                  )}
                   {t.installmentNumber && t.installmentPurchase && (
                     <span className="text-[10px] text-accent bg-accent/10 rounded px-1.5 py-0.5 mt-0.5 inline-block">
                       Parcela {t.installmentNumber}/{t.installmentPurchase.installmentsCount}
                     </span>
                   )}
                 </td>
-                <td className={clsx("p-2.5 text-right font-medium whitespace-nowrap", t.amount >= 0 ? "text-positive" : "text-negative")}>
+                <td
+                  className={clsx(
+                    "p-2.5 text-right font-medium whitespace-nowrap",
+                    !isConsumption(t.kind) ? "text-muted" : t.amount >= 0 ? "text-positive" : "text-negative"
+                  )}
+                >
                   {formatCurrency(t.amount)}
                 </td>
                 <td className="p-2.5">
@@ -656,12 +709,14 @@ export function TransactionsBoard({
                 </td>
                 <td className="p-2.5">
                   <div className="flex items-center justify-end gap-1">
-                    <button type="button" onClick={() => openEdit(t)} className="h-7 w-7 flex items-center justify-center rounded hover:bg-background">
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
+                    {isConsumption(t.kind) && (
+                      <button type="button" onClick={() => openEdit(t)} className="h-7 w-7 flex items-center justify-center rounded hover:bg-background" aria-label="Editar lançamento">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => handleDelete(t.id)}
+                      onClick={() => handleDelete(t)}
                       className="h-7 w-7 flex items-center justify-center rounded hover:bg-negative-bg text-negative"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -713,6 +768,7 @@ export function TransactionsBoard({
           categories={categories}
           banks={banks}
           creditCards={creditCards}
+          members={members}
           initial={editingValues}
           onClose={() => setFormOpen(false)}
           onSubmit={handleSave}

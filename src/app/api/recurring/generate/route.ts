@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { TransactionStatus } from "@prisma/client";
+import { TransactionStatus, TransactionSource, TransactionKind } from "@prisma/client";
+import { CONSUMPTION_KINDS, type TransactionKindValue } from "@/lib/finance/kinds";
+import { createTransaction } from "@/lib/finance/transactionService";
 
 const schema = z.object({
   year: z.number().int().min(2000).max(2100),
@@ -12,7 +14,7 @@ const schema = z.object({
 // Gera, para o mês informado, uma cópia de cada lançamento recorrente do mês
 // anterior. Não duplica: se já existir no mês um lançamento igual (mesma
 // descrição, valor, categoria e banco/cartão), ele é pulado — então é seguro
-// clicar mais de uma vez. Parcelas de compras parceladas nunca são copiadas.
+// clicar mais de uma vez. Parcelas, transferências e pagamentos nunca são copiados.
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
@@ -29,19 +31,21 @@ export async function POST(req: NextRequest) {
   const [source, existing] = await Promise.all([
     prisma.transaction.findMany({
       where: {
+        householdId: session.householdId,
         isRecurring: true,
         installmentPurchaseId: null,
+        kind: { in: CONSUMPTION_KINDS as TransactionKind[] },
         eventDate: { gte: prevStart, lt: targetStart },
       },
     }),
     prisma.transaction.findMany({
-      where: { eventDate: { gte: targetStart, lt: targetEnd } },
-      select: { description: true, amount: true, categoryId: true, bankId: true, creditCardId: true },
+      where: { householdId: session.householdId, eventDate: { gte: targetStart, lt: targetEnd } },
+      select: { description: true, amountCents: true, categoryId: true, bankId: true, creditCardId: true },
     }),
   ]);
 
-  const key = (t: { description: string; amount: number; categoryId: string | null; bankId: string | null; creditCardId: string | null }) =>
-    [t.description, t.amount, t.categoryId ?? "", t.bankId ?? "", t.creditCardId ?? ""].join("|");
+  const key = (t: { description: string; amountCents: number; categoryId: string | null; bankId: string | null; creditCardId: string | null }) =>
+    [t.description, t.amountCents, t.categoryId ?? "", t.bankId ?? "", t.creditCardId ?? ""].join("|");
   const existingKeys = new Set(existing.map(key));
 
   const daysInTarget = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -50,20 +54,22 @@ export async function POST(req: NextRequest) {
   for (const t of source) {
     if (existingKeys.has(key(t))) continue;
     const day = Math.min(t.eventDate.getUTCDate(), daysInTarget);
-    await prisma.transaction.create({
-      data: {
-        eventDate: new Date(Date.UTC(year, month - 1, day)),
-        settlementDate: null,
-        categoryId: t.categoryId,
-        paymentMethod: t.paymentMethod,
-        bankId: t.bankId,
-        creditCardId: t.creditCardId,
-        description: t.description,
-        amount: t.amount,
-        status: TransactionStatus.PENDENTE,
-        isRecurring: true,
-        userId: session.userId,
-      },
+    await createTransaction({
+      householdId: session.householdId,
+      userId: session.userId,
+      eventDate: new Date(Date.UTC(year, month - 1, day)),
+      settlementDate: null,
+      categoryId: t.categoryId,
+      kind: t.kind as TransactionKindValue,
+      paymentMethod: t.paymentMethod,
+      bankId: t.bankId,
+      creditCardId: t.creditCardId,
+      memberId: t.memberId,
+      description: t.description,
+      amountCents: t.amountCents,
+      status: TransactionStatus.PENDENTE,
+      isRecurring: true,
+      source: TransactionSource.SYSTEM,
     });
     existingKeys.add(key(t));
     created++;

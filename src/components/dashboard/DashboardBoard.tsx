@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { MonthYearSelector } from "@/components/MonthYearSelector";
 import { BalanceCard } from "@/components/BalanceCard";
-import { formatCompact, formatCurrency, MONTH_NAMES } from "@/lib/format";
+import { formatCompact, formatCurrency, formatDate, MONTH_NAMES } from "@/lib/format";
 
 type Breakdown = { name: string; value: number; children: { name: string; value: number }[] };
 
@@ -52,7 +52,7 @@ type DashboardData = {
   despesaDeltaPct: number | null;
   receitaBreakdown: Breakdown[];
   despesaBreakdown: Breakdown[];
-  cardInvoices: { label: string; open: number; dueDay: number | null }[];
+  cardInvoices: { label: string; open: number; dueDay: number | null; nextDue: string | null; nextLabel: string | null }[];
 };
 
 type PanelKey = "contas" | "receitas" | "despesas" | "cartoes";
@@ -284,13 +284,17 @@ export function DashboardBoard({ initialData, year, month }: { initialData: Dash
           )}
           {panel === "cartoes" && (
             <>
-              <h2 className="text-sm font-semibold text-foreground mb-2">Fatura em aberto por cartão</h2>
+              <h2 className="text-sm font-semibold text-foreground mb-2">Em aberto por cartão</h2>
               <div className="flex flex-col divide-y divide-border">
                 {data.cardInvoices.map((c) => (
                   <div key={c.label} className="py-2 flex items-center justify-between text-sm">
                     <span>
                       {c.label}
-                      {c.dueDay && <span className="text-xs text-muted"> · vence dia {c.dueDay}</span>}
+                      {c.nextDue ? (
+                        <span className="text-xs text-muted"> · fatura {c.nextLabel} vence {formatDate(c.nextDue)}</span>
+                      ) : (
+                        c.dueDay && <span className="text-xs text-muted"> · vence dia {c.dueDay}</span>
+                      )}
                     </span>
                     <span className="font-medium">{formatCurrency(c.open)}</span>
                   </div>

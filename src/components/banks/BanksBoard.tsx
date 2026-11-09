@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { clsx } from "clsx";
-import { Plus, Pencil, Trash2, X, Landmark } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Landmark, ArrowLeftRight } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
+import { TransferDialog } from "./TransferDialog";
 
 type Bank = {
   id: string;
@@ -26,6 +27,7 @@ export function BanksBoard({ initial }: { initial: Bank[] }) {
   const [formOpen, setFormOpen] = useState(false);
   const [values, setValues] = useState<FormValues>(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
 
   useEffect(() => setBanks(initial), [initial]);
 
@@ -85,9 +87,20 @@ export function BanksBoard({ initial }: { initial: Bank[] }) {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-foreground">Bancos</h1>
-        <button type="button" onClick={openNew} className="flex items-center gap-1.5 rounded-lg bg-accent text-accent-foreground text-xs font-medium px-3 py-2">
-          <Plus className="h-3.5 w-3.5" /> Novo banco
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTransferOpen(true)}
+            disabled={banks.length < 2}
+            title={banks.length < 2 ? "Cadastre ao menos duas contas para transferir" : undefined}
+            className="flex items-center gap-1.5 rounded-lg border border-border text-xs font-medium px-3 py-2 disabled:opacity-40"
+          >
+            <ArrowLeftRight className="h-3.5 w-3.5" /> Transferir
+          </button>
+          <button type="button" onClick={openNew} className="flex items-center gap-1.5 rounded-lg bg-accent text-accent-foreground text-xs font-medium px-3 py-2">
+            <Plus className="h-3.5 w-3.5" /> Novo banco
+          </button>
+        </div>
       </div>
 
       <div className={clsx("rounded-2xl border p-5 flex flex-col gap-1", totalBalance >= 0 ? "bg-positive-bg border-positive/20" : "bg-negative-bg border-negative/20")}>
@@ -185,6 +198,16 @@ export function BanksBoard({ initial }: { initial: Bank[] }) {
             </button>
           </form>
         </div>
+      )}
+      {transferOpen && (
+        <TransferDialog
+          banks={banks.map((b) => ({ id: b.id, name: b.name }))}
+          onClose={() => setTransferOpen(false)}
+          onDone={() => {
+            setTransferOpen(false);
+            reload();
+          }}
+        />
       )}
     </div>
   );

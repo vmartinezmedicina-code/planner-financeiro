@@ -1,19 +1,23 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { TransactionKind } from "@prisma/client";
+import { CONSUMPTION_KINDS } from "@/lib/finance/kinds";
 
 // Regra automática simples: procura, na descrição do lançamento, o nome de
 // alguma categoria/subcategoria já cadastrada (ignorando maiúsculas/acentos)
 // e aplica a correspondência mais específica (nome mais longo) encontrada.
-// Não é um motor de regras configurável — é um ponto de partida rápido para
-// reduzir lançamentos não categorizados.
+// Só lançamentos de consumo recebem categoria (transferências/pagamentos não).
+// Na Fase 7 isto vira um motor de regras configurável (CategorizationRule).
 export async function POST() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   const [categories, uncategorized] = await Promise.all([
-    prisma.category.findMany(),
-    prisma.transaction.findMany({ where: { categoryId: null } }),
+    prisma.category.findMany({ where: { householdId: session.householdId } }),
+    prisma.transaction.findMany({
+      where: { householdId: session.householdId, categoryId: null, kind: { in: CONSUMPTION_KINDS as TransactionKind[] } },
+    }),
   ]);
 
   function normalize(s: string) {
@@ -24,7 +28,7 @@ export async function POST() {
   }
 
   const normalizedCategories = categories
-    .map((c) => ({ id: c.id, name: normalize(c.name) }))
+    .map((c) => ({ id: c.id, name: normalize(c.name), type: c.type }))
     .sort((a, b) => b.name.length - a.name.length);
 
   let matched = 0;
@@ -32,7 +36,8 @@ export async function POST() {
 
   for (const t of uncategorized) {
     const desc = normalize(t.description);
-    const found = normalizedCategories.find((c) => c.name.length >= 3 && desc.includes(c.name));
+    const wantedType = t.kind === "INCOME" ? "RECEITA" : "DESPESA";
+    const found = normalizedCategories.find((c) => c.type === wantedType && c.name.length >= 3 && desc.includes(c.name));
     if (found) {
       updates.push({ id: t.id, categoryId: found.id });
       matched++;

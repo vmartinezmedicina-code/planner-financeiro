@@ -14,14 +14,19 @@ datasource db {
 // Usuários (apenas 2 contas fixas, sem auto-cadastro)
 // ---------------------------------------------------------------------------
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  avatarColor  String   @default("#6366f1")
-  createdAt    DateTime @default(now())
-  failedLogins Int      @default(0)
-  lockedUntil  DateTime?
+  id             String    @id @default(cuid())
+  name           String
+  email          String    @unique
+  passwordHash   String
+  avatarColor    String    @default("#6366f1")
+  createdAt      DateTime  @default(now())
+  failedLogins   Int       @default(0)
+  lockedUntil    DateTime?
+  // V2: incrementado ao trocar a senha; sessões (JWT) com versão antiga são rejeitadas.
+  sessionVersion Int       @default(0)
+  householdId    String?
+  household      Household? @relation(fields: [householdId], references: [id])
+  member         HouseholdMember?
 
   transactions         Transaction[]
   investments          Investment[]
@@ -30,17 +35,62 @@ model User {
 }
 
 // ---------------------------------------------------------------------------
+// V2 — Família. Uma Household agrupa usuários (com login) e membros
+// financeiros (com ou sem login: "Helena", "Casa"...). Todo registro
+// financeiro pertence a uma família; as rotas filtram pelo household da sessão.
+// ---------------------------------------------------------------------------
+model Household {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  users                User[]
+  members              HouseholdMember[]
+  banks                Bank[]
+  creditCards          CreditCard[]
+  categories           Category[]
+  plannedValues        PlannedValue[]
+  transactions         Transaction[]
+  installmentPurchases InstallmentPurchase[]
+  investments          Investment[]
+  invoices             CreditCardInvoice[]
+}
+
+model HouseholdMember {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name        String
+  userId      String?   @unique
+  user        User?     @relation(fields: [userId], references: [id])
+  color       String    @default("#6366f1")
+  order       Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  transactions Transaction[]
+
+  @@index([householdId])
+}
+
+// ---------------------------------------------------------------------------
 // Bancos / contas (saldo inicial + saldo atual calculado pelos lançamentos)
 // ---------------------------------------------------------------------------
 model Bank {
-  id             String   @id @default(cuid())
-  name           String
-  initialBalance Float    @default(0)
-  color          String   @default("#6366f1")
-  order          Int      @default(0)
-  createdAt      DateTime @default(now())
+  id                  String   @id @default(cuid())
+  name                String
+  initialBalance      Float    @default(0) // legado (espelho) — fonte da verdade: initialBalanceCents
+  initialBalanceCents Int      @default(0)
+  color               String   @default("#6366f1")
+  order               Int      @default(0)
+  createdAt           DateTime @default(now())
+  householdId         String?
+  household           Household? @relation(fields: [householdId], references: [id])
 
   transactions Transaction[]
+  paidInvoices CreditCardInvoice[]
+
+  @@index([householdId])
 }
 
 // ---------------------------------------------------------------------------
@@ -56,9 +106,56 @@ model CreditCard {
   color       String   @default("#ec4899")
   order       Int      @default(0)
   createdAt   DateTime @default(now())
+  householdId String?
+  household   Household? @relation(fields: [householdId], references: [id])
 
   transactions         Transaction[]
   installmentPurchases InstallmentPurchase[]
+  invoices             CreditCardInvoice[]
+
+  @@index([householdId])
+}
+
+// ---------------------------------------------------------------------------
+// V2 — Fatura de cartão. Cada compra no cartão (CARD_PURCHASE) pertence a
+// exatamente uma fatura, definida pelo dia de fechamento do cartão. Pagar a
+// fatura cria um lançamento CARD_PAYMENT na conta escolhida (sai do saldo,
+// mas NÃO é despesa — a despesa já foi contada na compra).
+// ---------------------------------------------------------------------------
+enum InvoiceStatus {
+  OPEN
+  CLOSED
+  PAID
+  PARTIAL
+  OVERDUE
+}
+
+model CreditCardInvoice {
+  id                   String        @id @default(cuid())
+  householdId          String?
+  household            Household?    @relation(fields: [householdId], references: [id])
+  creditCardId         String
+  creditCard           CreditCard    @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+  referenceYear        Int
+  referenceMonth       Int // 1-12
+  openingDate          DateTime
+  closingDate          DateTime
+  dueDate              DateTime
+  status               InvoiceStatus @default(OPEN) // OPEN/CLOSED/OVERDUE são derivados das datas na leitura; PAID/PARTIAL persistidos
+  totalCents           Int           @default(0) // cache: soma das compras; recalculado pelo serviço
+  paidCents            Int           @default(0)
+  paidAt               DateTime?
+  paymentBankId        String?
+  paymentBank          Bank?         @relation(fields: [paymentBankId], references: [id])
+  paymentTransactionId String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  transactions Transaction[]
+
+  @@unique([creditCardId, referenceYear, referenceMonth])
+  @@index([householdId])
+  @@index([dueDate])
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +175,8 @@ model Category {
   parent    Category?    @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
   children  Category[]   @relation("CategoryTree")
   createdAt DateTime     @default(now())
+  householdId String?
+  household   Household? @relation(fields: [householdId], references: [id])
 
   plannedValues        PlannedValue[]
   transactions         Transaction[]
@@ -85,6 +184,7 @@ model Category {
 
   @@index([parentId])
   @@index([type])
+  @@index([householdId])
 }
 
 // ---------------------------------------------------------------------------
@@ -95,14 +195,18 @@ model PlannedValue {
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   year       Int
-  month      Int // 1-12
-  amount     Float    @default(0)
-  userId     String?
-  user       User?    @relation(fields: [userId], references: [id])
-  updatedAt  DateTime @updatedAt
+  month       Int // 1-12
+  amount      Float    @default(0) // legado (espelho) — fonte da verdade: amountCents
+  amountCents Int      @default(0)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  householdId String?
+  household   Household? @relation(fields: [householdId], references: [id])
+  updatedAt   DateTime @updatedAt
 
   @@unique([categoryId, year, month])
   @@index([year, month])
+  @@index([householdId])
 }
 
 // ---------------------------------------------------------------------------
@@ -124,6 +228,30 @@ enum PaymentMethod {
   DINHEIRO
 }
 
+// V2: semântica do lançamento (ver docs/DATA-MODEL-V2.md).
+// INCOME/EXPENSE: consumo via conta. CARD_PURCHASE: despesa no cartão (vai para a fatura).
+// CARD_PAYMENT: pagamento da fatura (sai da conta, NÃO é despesa). TRANSFER: entre contas
+// próprias (par ligado por transferGroupId, NÃO é receita/despesa). ADJUSTMENT: correção de saldo.
+enum TransactionKind {
+  INCOME
+  EXPENSE
+  TRANSFER
+  CARD_PURCHASE
+  CARD_PAYMENT
+  ADJUSTMENT
+}
+
+// V2: de onde veio o lançamento (auditoria / importação).
+enum TransactionSource {
+  MANUAL
+  TEXT_AI
+  IMAGE
+  PDF
+  CSV
+  IMPORT
+  SYSTEM
+}
+
 model Transaction {
   id                    String               @id @default(cuid())
   eventDate             DateTime // data do evento (compra)
@@ -136,7 +264,17 @@ model Transaction {
   creditCardId          String?
   creditCardRef         CreditCard?          @relation(fields: [creditCardId], references: [id])
   description           String
-  amount                Float // positivo = receita, negativo = despesa
+  amount                Float // legado (espelho) — fonte da verdade: amountCents. positivo = receita, negativo = despesa
+  amountCents           Int                  @default(0)
+  kind                  TransactionKind      @default(EXPENSE)
+  source                TransactionSource    @default(MANUAL)
+  householdId           String?
+  household             Household?           @relation(fields: [householdId], references: [id])
+  memberId              String? // a quem pertence o gasto/receita (opcional); userId = quem lançou
+  member                HouseholdMember?     @relation(fields: [memberId], references: [id])
+  transferGroupId       String? // une os dois lados de uma transferência
+  invoiceId             String? // fatura à qual uma CARD_PURCHASE pertence
+  invoice               CreditCardInvoice?   @relation(fields: [invoiceId], references: [id])
   status                TransactionStatus    @default(PENDENTE)
   isRecurring           Boolean              @default(false)
   recurrenceRule        String? // ex: "MONTHLY"
@@ -154,6 +292,11 @@ model Transaction {
   @@index([bankId])
   @@index([creditCardId])
   @@index([installmentPurchaseId])
+  @@index([kind])
+  @@index([householdId, eventDate])
+  @@index([memberId])
+  @@index([transferGroupId])
+  @@index([invoiceId])
 }
 
 // ---------------------------------------------------------------------------
@@ -164,7 +307,8 @@ model Transaction {
 model InstallmentPurchase {
   id                String     @id @default(cuid())
   description       String
-  totalAmount       Float // valor total da compra (positivo)
+  totalAmount       Float // legado (espelho) — fonte da verdade: totalAmountCents. valor total da compra (positivo)
+  totalAmountCents  Int        @default(0)
   installmentsCount Int
   purchaseDate      DateTime // data da compra original
   categoryId        String?
@@ -173,12 +317,15 @@ model InstallmentPurchase {
   creditCard        CreditCard @relation(fields: [creditCardId], references: [id])
   userId            String
   user              User       @relation(fields: [userId], references: [id])
+  householdId       String?
+  household         Household? @relation(fields: [householdId], references: [id])
   createdAt         DateTime   @default(now())
 
   installments Transaction[]
 
   @@index([creditCardId])
   @@index([categoryId])
+  @@index([householdId])
 }
 
 // ---------------------------------------------------------------------------
@@ -187,15 +334,20 @@ model InstallmentPurchase {
 model Investment {
   id                String   @id @default(cuid())
   product           String // tipo/produto (ex: Tesouro Selic, CDB, Ações)
-  institution       String
-  contributedAmount Float
-  contributionDate  DateTime
-  currentValue      Float
-  userId            String
-  user              User     @relation(fields: [userId], references: [id])
-  notes             String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  institution            String
+  contributedAmount      Float // legado (espelho) — fonte da verdade: contributedAmountCents
+  contributedAmountCents Int      @default(0)
+  contributionDate       DateTime
+  currentValue           Float // legado (espelho) — fonte da verdade: currentValueCents
+  currentValueCents      Int      @default(0)
+  userId                 String
+  user                   User     @relation(fields: [userId], references: [id])
+  householdId            String?
+  household              Household? @relation(fields: [householdId], references: [id])
+  notes                  String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@index([userId])
+  @@index([householdId])
 }

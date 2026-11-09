@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifySession, SESSION_COOKIE } from "@/lib/auth";
+import { verifySession, SESSION_COOKIE } from "@/lib/sessionToken";
 
 // Next.js 16: o arquivo "proxy.ts" (antigo "middleware.ts") já roda sempre
 // no runtime Node.js, necessário pois `jsonwebtoken` usa o módulo `crypto`.

@@ -1,8 +1,15 @@
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { fromCents } from "@/lib/money";
 import { InstallmentsBoard } from "@/components/installments/InstallmentsBoard";
 
 export default async function ParcelamentosPage() {
+  const session = await getSession();
+  if (!session) redirect("/login");
+
   const purchases = await prisma.installmentPurchase.findMany({
+    where: { householdId: session.householdId },
     include: {
       category: true,
       creditCard: true,
@@ -14,7 +21,7 @@ export default async function ParcelamentosPage() {
   const serialized = purchases.map((p) => ({
     id: p.id,
     description: p.description,
-    totalAmount: p.totalAmount,
+    totalAmount: fromCents(p.totalAmountCents),
     installmentsCount: p.installmentsCount,
     purchaseDate: p.purchaseDate.toISOString(),
     category: p.category ? { id: p.category.id, name: p.category.name } : null,
@@ -22,7 +29,7 @@ export default async function ParcelamentosPage() {
     installments: p.installments.map((i) => ({
       id: i.id,
       eventDate: i.eventDate.toISOString(),
-      amount: i.amount,
+      amount: fromCents(i.amountCents),
       installmentNumber: i.installmentNumber,
     })),
   }));

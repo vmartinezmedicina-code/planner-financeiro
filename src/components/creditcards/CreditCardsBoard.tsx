@@ -3,20 +3,14 @@
 import { useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { Plus, Pencil, Trash2, X, CreditCard as CardIcon, ChevronDown, ChevronUp } from "lucide-react";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCents } from "@/lib/money";
+import type { CardWithInvoices } from "@/lib/invoices/cards";
+import type { InvoiceView } from "@/lib/invoices/invoiceService";
+import { InvoiceList, InvoiceStatusBadge } from "./InvoiceList";
+import { PayInvoiceDialog } from "./PayInvoiceDialog";
 
-type Card = {
-  id: string;
-  name: string;
-  institution: string | null;
-  limit: number | null;
-  closingDay: number | null;
-  dueDay: number | null;
-  color: string;
-  currentInvoice: number;
-  transactionCount: number;
-  byCategory: { name: string; value: number }[];
-};
+type Card = CardWithInvoices;
 
 type FormValues = {
   id?: string;
@@ -34,12 +28,14 @@ function emptyForm(): FormValues {
   return { name: "", institution: "", limit: "", closingDay: "", dueDay: "", color: COLORS[0] };
 }
 
-export function CreditCardsBoard({ initial }: { initial: Card[] }) {
+export function CreditCardsBoard({ initial, banks }: { initial: Card[]; banks: { id: string; name: string }[] }) {
   const [cards, setCards] = useState(initial);
   const [formOpen, setFormOpen] = useState(false);
   const [values, setValues] = useState<FormValues>(emptyForm());
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [invoicesOpen, setInvoicesOpen] = useState<string | null>(null);
+  const [paying, setPaying] = useState<{ invoice: InvoiceView; cardName: string } | null>(null);
 
   useEffect(() => setCards(initial), [initial]);
 
@@ -67,7 +63,7 @@ export function CreditCardsBoard({ initial }: { initial: Card[] }) {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Excluir este cartão? Os lançamentos vinculados perdem a referência (não são excluídos).")) return;
+    if (!confirm("Excluir este cartão? As faturas dele são removidas; os lançamentos perdem a referência (não são excluídos).")) return;
     await fetch(`/api/credit-cards/${id}`, { method: "DELETE" });
     reload();
   }
@@ -115,15 +111,24 @@ export function CreditCardsBoard({ initial }: { initial: Card[] }) {
         </button>
       </div>
 
-      <div className="rounded-2xl border border-negative/20 bg-negative-bg p-5 flex flex-col gap-1">
-        <span className="text-xs font-medium text-muted">Total das faturas (todos os cartões)</span>
-        <span className="text-2xl font-semibold text-negative">{formatCurrency(totalInvoices)}</span>
+      <div
+        className={clsx(
+          "rounded-2xl border p-5 flex flex-col gap-1",
+          totalInvoices > 0 ? "border-negative/20 bg-negative-bg" : "border-border bg-surface"
+        )}
+      >
+        <span className="text-xs font-medium text-muted">Total em aberto (todos os cartões)</span>
+        <span className={clsx("text-2xl font-semibold", totalInvoices > 0 ? "text-negative" : "text-foreground")}>
+          {formatCurrency(totalInvoices)}
+        </span>
+        <span className="text-xs text-muted">Soma das faturas ainda não pagas</span>
       </div>
 
       <div className="flex flex-col gap-3">
         {cards.map((card) => {
           const pct = card.limit ? Math.min(100, (card.currentInvoice / card.limit) * 100) : 0;
           const isOpen = expanded === card.id;
+          const showInvoices = invoicesOpen === card.id;
           return (
             <div key={card.id} className="rounded-2xl border border-border bg-surface p-4 flex flex-col gap-3">
               <div className="flex items-start justify-between gap-2">
@@ -141,22 +146,36 @@ export function CreditCardsBoard({ initial }: { initial: Card[] }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <button type="button" onClick={() => openEdit(card)} className="h-7 w-7 flex items-center justify-center rounded hover:bg-surface-muted">
+                  <button type="button" onClick={() => openEdit(card)} className="h-7 w-7 flex items-center justify-center rounded hover:bg-surface-muted" aria-label={`Editar ${card.name}`}>
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
-                  <button type="button" onClick={() => handleDelete(card.id)} className="h-7 w-7 flex items-center justify-center rounded hover:bg-negative-bg text-negative">
+                  <button type="button" onClick={() => handleDelete(card.id)} className="h-7 w-7 flex items-center justify-center rounded hover:bg-negative-bg text-negative" aria-label={`Excluir ${card.name}`}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between">
+              {!card.closingDay && (
+                <p className="text-[11px] text-warning-fg bg-warning-bg rounded-lg px-3 py-2">
+                  Informe o dia de fechamento para as compras caírem na fatura certa. Sem ele, cada fatura fecha no último dia do mês.
+                </p>
+              )}
+
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs text-muted mb-0.5">Fatura atual ({card.transactionCount} lançamento(s))</p>
-                  <p className="text-lg font-semibold text-negative">{formatCurrency(card.currentInvoice)}</p>
+                  <p className="text-xs text-muted mb-0.5">Em aberto</p>
+                  <p className={clsx("text-lg font-semibold", card.currentInvoice > 0 ? "text-negative" : "text-foreground")}>
+                    {formatCurrency(card.currentInvoice)}
+                  </p>
+                  {card.nextDue && (
+                    <p className="text-[11px] text-muted mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      Próxima: {card.nextDue.label} · {formatCents(card.nextDue.remainingCents)} · vence {formatDate(card.nextDue.dueDate)}
+                      <InvoiceStatusBadge status={card.nextDue.status} />
+                    </p>
+                  )}
                 </div>
                 {card.limit != null && (
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <p className="text-xs text-muted mb-0.5">Limite</p>
                     <p className="text-sm font-medium">{formatCurrency(card.limit)}</p>
                   </div>
@@ -169,26 +188,41 @@ export function CreditCardsBoard({ initial }: { initial: Card[] }) {
                 </div>
               )}
 
-              {card.byCategory.length > 0 && (
-                <div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <button
+                  type="button"
+                  onClick={() => setInvoicesOpen(showInvoices ? null : card.id)}
+                  aria-expanded={showInvoices}
+                  className="flex items-center gap-1 text-xs font-medium text-accent"
+                >
+                  {showInvoices ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  Faturas ({card.invoices.length})
+                </button>
+                {card.byCategory.length > 0 && (
                   <button
                     type="button"
                     onClick={() => setExpanded(isOpen ? null : card.id)}
+                    aria-expanded={isOpen}
                     className="flex items-center gap-1 text-xs font-medium text-accent"
                   >
                     {isOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                    Ver gastos por categoria
+                    Gastos em aberto por categoria
                   </button>
-                  {isOpen && (
-                    <div className="mt-2 flex flex-col gap-1.5">
-                      {card.byCategory.map((c) => (
-                        <div key={c.name} className="flex items-center justify-between text-xs">
-                          <span className="text-muted">{c.name}</span>
-                          <span className="font-medium">{formatCurrency(c.value)}</span>
-                        </div>
-                      ))}
+                )}
+              </div>
+
+              {showInvoices && (
+                <InvoiceList invoices={card.invoices} onPay={(invoice) => setPaying({ invoice, cardName: card.name })} />
+              )}
+
+              {isOpen && (
+                <div className="flex flex-col gap-1.5">
+                  {card.byCategory.map((c) => (
+                    <div key={c.name} className="flex items-center justify-between text-xs">
+                      <span className="text-muted">{c.name}</span>
+                      <span className="font-medium">{formatCurrency(c.value)}</span>
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
             </div>
@@ -197,13 +231,26 @@ export function CreditCardsBoard({ initial }: { initial: Card[] }) {
         {cards.length === 0 && <p className="text-sm text-muted text-center py-8">Nenhum cartão cadastrado ainda.</p>}
       </div>
 
+      {paying && (
+        <PayInvoiceDialog
+          invoice={paying.invoice}
+          cardName={paying.cardName}
+          banks={banks}
+          onClose={() => setPaying(null)}
+          onDone={() => {
+            setPaying(null);
+            reload();
+          }}
+        />
+      )}
+
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setFormOpen(false)} />
           <form onSubmit={handleSubmit} className="relative bg-surface border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-5 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-foreground">{values.id ? "Editar cartão" : "Novo cartão"}</h2>
-              <button type="button" onClick={() => setFormOpen(false)} className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-surface-muted">
+              <button type="button" onClick={() => setFormOpen(false)} className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-surface-muted" aria-label="Fechar">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -264,6 +311,9 @@ export function CreditCardsBoard({ initial }: { initial: Card[] }) {
                 />
               </div>
             </div>
+            <p className="text-[11px] text-muted -mt-2">
+              Compras até o dia de fechamento entram na fatura do mês; depois dele, na fatura seguinte. Ao mudar esses dias, as faturas ainda não pagas são reorganizadas.
+            </p>
 
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-muted">Cor</label>
@@ -275,6 +325,7 @@ export function CreditCardsBoard({ initial }: { initial: Card[] }) {
                     onClick={() => setValues((v) => ({ ...v, color: c }))}
                     className={clsx("h-7 w-7 rounded-full", values.color === c && "ring-2 ring-offset-2 ring-offset-surface ring-accent")}
                     style={{ backgroundColor: c }}
+                    aria-label={`Cor ${c}`}
                   />
                 ))}
               </div>

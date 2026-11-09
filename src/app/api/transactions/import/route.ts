@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCategoryOptions } from "@/lib/categories";
-import { TransactionStatus } from "@prisma/client";
-import { resolvePaymentLinks } from "@/lib/paymentMethod";
+import { TransactionStatus, TransactionSource } from "@prisma/client";
+import { toCents } from "@/lib/money";
+import { createTransaction, TransactionError } from "@/lib/finance/transactionService";
+
+// Importação CSV (V1, mantida). Na Fase 6 passa a usar uma área de conferência
+// (ImportSession/ImportItem) com deduplicação; por enquanto grava direto, mas
+// já com kind/centavos/escopo e origem CSV, e NÃO cria mais bancos/cartões
+// automaticamente: linhas com instituição desconhecida ficam sem vínculo.
 
 function parseCsv(text: string): string[][] {
   const clean = text.replace(/^﻿/, "");
@@ -19,10 +25,6 @@ function parseDate(value: string): Date | null {
   const brMatch = value.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
   if (brMatch) return new Date(`${brMatch[3]}-${brMatch[2]}-${brMatch[1]}T00:00:00.000Z`);
   return null;
-}
-
-function parseAmount(value: string): number {
-  return Number(value.replace(/\./g, "").replace(",", ".")) || 0;
 }
 
 const STATUS_MAP: Record<string, TransactionStatus> = {
@@ -58,36 +60,18 @@ export async function POST(req: NextRequest) {
   const iStatus = idx("status");
   const iRecurring = idx("recorrente");
 
-  const categories = await getCategoryOptions();
-  const categoryByLabel = new Map(categories.map((c) => [c.label.toLowerCase(), c.id]));
-
-  const [existingBanks, existingCards] = await Promise.all([
-    prisma.bank.findMany(),
-    prisma.creditCard.findMany(),
+  const [categories, existingBanks, existingCards] = await Promise.all([
+    getCategoryOptions(session.householdId),
+    prisma.bank.findMany({ where: { householdId: session.householdId } }),
+    prisma.creditCard.findMany({ where: { householdId: session.householdId } }),
   ]);
+  const categoryByLabel = new Map(categories.map((c) => [c.label.toLowerCase(), c.id]));
   const bankByName = new Map(existingBanks.map((b) => [b.name.toLowerCase(), b.id]));
   const cardByName = new Map(existingCards.map((c) => [c.name.toLowerCase(), c.id]));
 
-  async function resolveBankId(name: string | undefined): Promise<string | null> {
-    if (!name) return null;
-    const key = name.toLowerCase();
-    if (bankByName.has(key)) return bankByName.get(key)!;
-    const bank = await prisma.bank.create({ data: { name, initialBalance: 0 } });
-    bankByName.set(key, bank.id);
-    return bank.id;
-  }
-
-  async function resolveCardId(name: string | undefined): Promise<string | null> {
-    if (!name) return null;
-    const key = name.toLowerCase();
-    if (cardByName.has(key)) return cardByName.get(key)!;
-    const card = await prisma.creditCard.create({ data: { name } });
-    cardByName.set(key, card.id);
-    return card.id;
-  }
-
   let created = 0;
   let skipped = 0;
+  const unknownInstitutions = new Set<string>();
 
   for (const row of dataRows) {
     const eventDate = iEvent !== -1 ? parseDate(row[iEvent]) : null;
@@ -99,35 +83,48 @@ export async function POST(req: NextRequest) {
     const settlementDate = iSettlement !== -1 ? parseDate(row[iSettlement]) : null;
     const categoryLabel = iCategory !== -1 ? row[iCategory]?.toLowerCase() : "";
     const categoryId = categoryLabel ? categoryByLabel.get(categoryLabel) ?? null : null;
-    const amount = iAmount !== -1 ? parseAmount(row[iAmount]) : 0;
+    const amountCents = iAmount !== -1 ? toCents(row[iAmount]) : 0;
     const statusRaw = iStatus !== -1 ? row[iStatus]?.toUpperCase() : "";
     const status = STATUS_MAP[statusRaw] ?? TransactionStatus.PENDENTE;
     const isRecurring = iRecurring !== -1 ? /sim|true|1/i.test(row[iRecurring] ?? "") : false;
 
-    const rawBankId = await resolveBankId(iBank !== -1 ? row[iBank] : undefined);
-    const rawCreditCardId = await resolveCardId(iCard !== -1 ? row[iCard] : undefined);
-    // Se a linha traz um cartão, a forma de pagamento é crédito (fatura);
-    // caso contrário, cai em débito e usa o banco (nunca os dois juntos).
-    const paymentMethod = rawCreditCardId ? "CREDITO" : "DEBITO";
-    const { bankId, creditCardId } = resolvePaymentLinks(paymentMethod, rawBankId, rawCreditCardId);
+    const bankName = iBank !== -1 ? row[iBank] : "";
+    const cardName = iCard !== -1 ? row[iCard] : "";
+    const bankId = bankName ? bankByName.get(bankName.toLowerCase()) ?? null : null;
+    const creditCardId = cardName ? cardByName.get(cardName.toLowerCase()) ?? null : null;
+    if (bankName && !bankId) unknownInstitutions.add(bankName);
+    if (cardName && !creditCardId) unknownInstitutions.add(cardName);
 
-    await prisma.transaction.create({
-      data: {
+    if (amountCents === 0) {
+      skipped++;
+      continue;
+    }
+
+    try {
+      await createTransaction({
+        householdId: session.householdId,
+        userId: session.userId,
         eventDate,
         settlementDate,
         categoryId,
-        paymentMethod,
+        paymentMethod: creditCardId ? "CREDITO" : "DEBITO",
         bankId,
         creditCardId,
         description,
-        amount,
+        amountCents,
         status,
         isRecurring,
-        userId: session.userId,
-      },
-    });
-    created++;
+        source: TransactionSource.CSV,
+      });
+      created++;
+    } catch (e) {
+      if (e instanceof TransactionError) {
+        skipped++;
+        continue;
+      }
+      throw e;
+    }
   }
 
-  return NextResponse.json({ created, skipped });
+  return NextResponse.json({ created, skipped, unknownInstitutions: [...unknownInstitutions] });
 }
