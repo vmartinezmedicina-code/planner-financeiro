@@ -38,7 +38,6 @@ export function CategoryRow({
   const hasChildren = node.children.length > 0;
   const isHeader = depth === 0;
 
-  const displayValue = activeTab === "planejado" ? node.planned : node.realizedTotal;
   const totalValue = activeTab === "planejado" ? node.plannedTotal : node.realizedTotal;
   const wasAdjusted = node.planned !== 0;
 

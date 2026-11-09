@@ -197,7 +197,7 @@ export function TransactionForm({
               ))}
             </select>
             {creditCards.length === 0 && (
-              <span className="text-[11px] text-muted">Nenhum cartão cadastrado — cadastre em "Cartões".</span>
+              <span className="text-[11px] text-muted">Nenhum cartão cadastrado — cadastre em &quot;Cartões&quot;.</span>
             )}
           </div>
         ) : null}
@@ -226,7 +226,7 @@ export function TransactionForm({
                   className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent w-32"
                 />
                 <p className="text-[11px] text-muted">
-                  A "Data do evento" abaixo é a data da 1ª parcela. As demais são lançadas automaticamente, uma por
+                  A &quot;Data do evento&quot; abaixo é a data da 1ª parcela. As demais são lançadas automaticamente, uma por
                   mês, dividindo o valor total informado.
                 </p>
               </div>
@@ -250,7 +250,7 @@ export function TransactionForm({
               ))}
             </select>
             {banks.length === 0 && (
-              <span className="text-[11px] text-muted">Nenhum banco cadastrado — cadastre em "Bancos".</span>
+              <span className="text-[11px] text-muted">Nenhum banco cadastrado — cadastre em &quot;Bancos&quot;.</span>
             )}
           </div>
         )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { clsx } from "clsx";
 import { Plus } from "lucide-react";
@@ -39,7 +39,13 @@ export function PlanningBoard({
   const [rootName, setRootName] = useState("");
   const [, startTransition] = useTransition();
 
-  useEffect(() => setData(initialData), [initialData]);
+  // Quando o servidor manda dados novos, o estado local é atualizado durante o
+  // render (padrão recomendado pelo React no lugar de um efeito).
+  const [synced, setSynced] = useState(initialData);
+  if (synced !== initialData) {
+    setSynced(initialData);
+    setData(initialData);
+  }
 
   const reload = useCallback(async (y: number, m: number) => {
     const res = await fetch(`/api/planning?year=${y}&month=${m}`);
@@ -109,7 +115,7 @@ export function PlanningBoard({
 
   async function handleMove(id: string, direction: -1 | 1) {
     const allRoots = [...data.receitaRoots, ...data.despesaRoots];
-    let siblings = allRoots.some((r) => r.id === id) ? allRoots : findSiblings(allRoots, id);
+    const siblings = allRoots.some((r) => r.id === id) ? allRoots : findSiblings(allRoots, id);
     if (!siblings) return;
     const filteredByType = siblings.filter((s) => s.type === siblings!.find((x) => x.id === id)!.type);
     const idx = filteredByType.findIndex((s) => s.id === id);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { clsx } from "clsx";
 import { Plus, Pencil, Trash2, X, CreditCard as CardIcon, ChevronDown, ChevronUp } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -37,7 +37,13 @@ export function CreditCardsBoard({ initial, banks }: { initial: Card[]; banks: {
   const [invoicesOpen, setInvoicesOpen] = useState<string | null>(null);
   const [paying, setPaying] = useState<{ invoice: InvoiceView; cardName: string } | null>(null);
 
-  useEffect(() => setCards(initial), [initial]);
+  // Quando o servidor manda dados novos, o estado local é atualizado durante o
+  // render (padrão recomendado pelo React no lugar de um efeito).
+  const [synced, setSynced] = useState(initial);
+  if (synced !== initial) {
+    setSynced(initial);
+    setCards(initial);
+  }
 
   async function reload() {
     const res = await fetch("/api/credit-cards");

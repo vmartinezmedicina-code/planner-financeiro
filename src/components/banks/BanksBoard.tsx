@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { clsx } from "clsx";
 import { Plus, Pencil, Trash2, X, Landmark, ArrowLeftRight } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
@@ -29,7 +29,13 @@ export function BanksBoard({ initial }: { initial: Bank[] }) {
   const [saving, setSaving] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
 
-  useEffect(() => setBanks(initial), [initial]);
+  // Quando o servidor manda dados novos, o estado local é atualizado durante o
+  // render (padrão recomendado pelo React no lugar de um efeito).
+  const [synced, setSynced] = useState(initial);
+  if (synced !== initial) {
+    setSynced(initial);
+    setBanks(initial);
+  }
 
   async function reload() {
     const res = await fetch("/api/banks");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { clsx } from "clsx";
 import { CalendarClock, CreditCard, Trash2, Layers } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -22,7 +22,13 @@ const PIE_COLORS = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#ef4
 export function InstallmentsBoard({ initial }: { initial: Purchase[] }) {
   const [purchases, setPurchases] = useState(initial);
 
-  useEffect(() => setPurchases(initial), [initial]);
+  // Quando o servidor manda dados novos, o estado local é atualizado durante o
+  // render (padrão recomendado pelo React no lugar de um efeito).
+  const [synced, setSynced] = useState(initial);
+  if (synced !== initial) {
+    setSynced(initial);
+    setPurchases(initial);
+  }
 
   async function reload() {
     const res = await fetch("/api/installments");
@@ -144,7 +150,7 @@ export function InstallmentsBoard({ initial }: { initial: Purchase[] }) {
         })}
         {purchases.length === 0 && (
           <p className="text-sm text-muted text-center py-6">
-            Nenhuma compra parcelada ainda. Crie uma em Lançamentos → Adicionar → Crédito → "Compra parcelada".
+            Nenhuma compra parcelada ainda. Crie uma em Lançamentos → Adicionar → Crédito → &quot;Compra parcelada&quot;.
           </p>
         )}
       </section>

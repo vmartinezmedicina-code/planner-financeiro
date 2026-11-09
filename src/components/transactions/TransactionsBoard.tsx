@@ -124,6 +124,7 @@ export function TransactionsBoard({
   }, [startDate, endDate, bankId, creditCardId, status, kindFilter, search, page]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca os lançamentos quando os filtros mudam
     load();
   }, [load]);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { clsx } from "clsx";
 import { Plus, Pencil, Trash2, X, TrendingUp, TrendingDown } from "lucide-react";
 import { formatCurrency, formatDate, toDateInputValue, todayInputValue } from "@/lib/format";
@@ -42,7 +42,13 @@ export function InvestmentsBoard({ initial }: { initial: Investment[] }) {
   const [values, setValues] = useState<FormValues>(emptyForm());
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => setItems(initial), [initial]);
+  // Quando o servidor manda dados novos, o estado local é atualizado durante o
+  // render (padrão recomendado pelo React no lugar de um efeito).
+  const [synced, setSynced] = useState(initial);
+  if (synced !== initial) {
+    setSynced(initial);
+    setItems(initial);
+  }
 
   async function reload() {
     const res = await fetch("/api/investments");

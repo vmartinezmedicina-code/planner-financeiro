@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { clsx } from "clsx";
 import {
@@ -161,7 +161,13 @@ export function DashboardBoard({ initialData, year, month }: { initialData: Dash
   const [panel, setPanel] = useState<PanelKey | null>(null);
   const [statementOpen, setStatementOpen] = useState(false);
 
-  useEffect(() => setData(initialData), [initialData]);
+  // Quando o servidor manda dados novos, o estado local é atualizado durante o
+  // render (padrão recomendado pelo React no lugar de um efeito).
+  const [synced, setSynced] = useState(initialData);
+  if (synced !== initialData) {
+    setSynced(initialData);
+    setData(initialData);
+  }
 
   const reload = useCallback(async (y: number, m: number) => {
     const res = await fetch(`/api/dashboard?year=${y}&month=${m}`);
