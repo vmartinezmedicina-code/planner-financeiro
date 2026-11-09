@@ -52,6 +52,12 @@ Fase 1 (fundação) está **em produção desde 08/11/2026** (migrations `v2_fou
 - Testes: `npm test` (node:test + tsx), incluindo integração contra SQLite temporário.
 - Migrations da V2 são escritas à mão (só `ADD COLUMN`/`CREATE`), nunca o `RedefineTables` do Prisma.
 
+Fase 2 (Dashboard 2.0) pronta no código, sem mudança de banco:
+- Dashboard em centavos (`src/lib/dashboard.ts`), dividido em `components/dashboard/*`; detalhe em painel lateral (`AnalyticsDrawer`).
+- Drill-down recursivo por categoria: `src/lib/analytics/categoryTree.ts` (puro) + `categoryAnalytics.ts`, `GET /api/analytics/category`, `components/analytics/CategoryExplorer.tsx`.
+- Saldo real (até hoje) × agendado (datas futuras): `src/lib/finance/banks.ts`; projeção em `finance/cashFlow.ts`; próximos vencimentos em `calendar/upcoming.ts`.
+- "Hoje" sempre no fuso de São Paulo (`todayAsUtcDate`, `todayInputValue` em `src/lib/format.ts`).
+
 ## Estado atual (08/11/2026)
 Funcionando em produção: login com bloqueio, troca de senha, planejamento, lançamentos (inclusive por texto/IA), bancos, cartões, parcelamentos, investimentos, relatórios (Excel/PDF), assistente, dashboard novo.
 

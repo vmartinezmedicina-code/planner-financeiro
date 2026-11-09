@@ -28,6 +28,18 @@ Legenda: ☐ a fazer · ◐ em andamento · ☑ feito
 - Próximos vencimentos e projeção curta. `getDashboardData` com queries por intervalo + agregação em memória.
 - Dividir `DashboardBoard` em `DashboardHeader`, `DashboardKpis`, `DashboardCashFlow`, `DashboardUpcoming`.
 
+Estado: ☑ código pronto (sem mudança de banco; basta `git push`). O que foi decidido na implementação:
+- **Saldo real × agendado:** o saldo considera só lançamentos com data de caixa (efetivação, ou evento) até hoje;
+  os de data futura aparecem como "agendado" e entram na projeção. Vale também para a tela Bancos.
+- **Competência do mês** continua contando tudo que foi lançado com data no mês (inclusive datas futuras),
+  o que serve ao orçamento. "Receitas previstas" = o que ainda não entrou (lançado no futuro ou planejado e não lançado).
+- **Indicador = detalhe:** receitas/despesas do dashboard usam o mesmo cálculo do drill-down
+  (`analytics/categoryTree`), incluindo lançamentos sem categoria.
+- **Próximos vencimentos** derivam do que já está lançado (faturas não pagas + lançamentos futuros). O cadastro de
+  compromissos recorrentes (`FinancialCommitment`) fica para a Fase 5.
+- **Saiu do dashboard:** o gráfico de parcelas (foi para o painel de Cartões) e o "extrato mensal consolidado"
+  (planejado × realizado está no drill-down, em Planejamento e em Relatórios).
+
 ## Fase 3 — Análises (BI)
 - Renomear "Relatórios" → "Análises" (export vira ação secundária).
 - Filtros globais; visões: geral, despesas, receitas, cartões, fluxo (competência × caixa), planejamento, patrimônio.
