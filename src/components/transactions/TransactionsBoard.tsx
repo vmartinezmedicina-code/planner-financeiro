@@ -21,6 +21,8 @@ import { formatCurrency, formatDate, toDateInputValue, todayInputValue } from "@
 import type { CategoryOption } from "@/lib/categories";
 import { PAYMENT_METHOD_LABEL } from "@/lib/paymentMethod";
 import { KIND_LABEL, isConsumption, type TransactionKindValue } from "@/lib/finance/kinds";
+import { CategoryPicker } from "@/components/ui/CategoryPicker";
+import { ChoiceChips } from "@/components/ui/ChoiceChips";
 import { TransactionForm, TransactionFormValues, PaymentMethodValue, emptyTransactionForm } from "./TransactionForm";
 
 type Transaction = {
@@ -77,8 +79,8 @@ export function TransactionsBoard({
   openNewOnLoad = false,
 }: {
   categories: CategoryOption[];
-  banks: { id: string; name: string }[];
-  creditCards: { id: string; name: string }[];
+  banks: { id: string; name: string; color?: string }[];
+  creditCards: { id: string; name: string; color?: string }[];
   categoryPathById: Record<string, string>;
   members: { id: string; name: string }[];
   defaultMemberId: string | null;
@@ -98,6 +100,7 @@ export function TransactionsBoard({
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [bulkCategorizeOpen, setBulkCategorizeOpen] = useState(false);
   const [bulkCategoryId, setBulkCategoryId] = useState("");
+  const [bulkType, setBulkType] = useState<"DESPESA" | "RECEITA">("DESPESA");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -781,22 +784,24 @@ export function TransactionsBoard({
       {bulkCategorizeOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setBulkCategorizeOpen(false)} />
-          <div className="relative bg-surface border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-5 flex flex-col gap-4">
+          <div className="relative bg-surface border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[90vh] overflow-y-auto p-5 flex flex-col gap-4">
             <h2 className="text-lg font-semibold text-foreground">
               Editar categoria de {selected.size} lançamento(s)
             </h2>
-            <select
-              value={bulkCategoryId}
-              onChange={(e) => setBulkCategoryId(e.target.value)}
-              className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">Sem categoria</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
+            <ChoiceChips
+              label="Tipo de categoria"
+              columns={2}
+              options={[
+                { value: "DESPESA", label: "Despesa" },
+                { value: "RECEITA", label: "Receita" },
+              ]}
+              value={bulkType}
+              onChange={(v) => {
+                setBulkType(v as "DESPESA" | "RECEITA");
+                setBulkCategoryId("");
+              }}
+            />
+            <CategoryPicker key={bulkType} categories={categories} type={bulkType} value={bulkCategoryId} onChange={setBulkCategoryId} />
             <div className="flex gap-2 justify-end">
               <button type="button" onClick={() => setBulkCategorizeOpen(false)} className="text-sm text-muted px-3 py-2">
                 Cancelar

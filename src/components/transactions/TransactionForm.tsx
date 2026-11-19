@@ -5,6 +5,8 @@ import { X } from "lucide-react";
 import type { CategoryOption } from "@/lib/categories";
 import { todayInputValue } from "@/lib/format";
 import { PAYMENT_METHOD_LABEL } from "@/lib/paymentMethod";
+import { ChoiceChips } from "@/components/ui/ChoiceChips";
+import { CategoryPicker } from "@/components/ui/CategoryPicker";
 
 export type PaymentMethodValue = "DEBITO" | "CREDITO" | "PIX" | "DINHEIRO";
 
@@ -57,22 +59,37 @@ export function TransactionForm({
   onSubmit,
 }: {
   categories: CategoryOption[];
-  banks: { id: string; name: string }[];
-  creditCards: { id: string; name: string }[];
+  banks: { id: string; name: string; color?: string }[];
+  creditCards: { id: string; name: string; color?: string }[];
   members: { id: string; name: string }[];
   initial: TransactionFormValues;
   onClose: () => void;
   onSubmit: (values: TransactionFormValues) => Promise<void>;
 }) {
-  const [values, setValues] = useState(initial);
+  const [values, setValues] = useState<TransactionFormValues>(() => ({
+    ...initial,
+    bankId: initial.bankId || (!initial.id && banks.length === 1 ? banks[0].id : ""),
+    creditCardId: initial.creditCardId || (!initial.id && creditCards.length === 1 ? creditCards[0].id : ""),
+  }));
   const [saving, setSaving] = useState(false);
 
   function set<K extends keyof TransactionFormValues>(key: K, value: TransactionFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }));
   }
 
+  const [error, setError] = useState<string | null>(null);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
+    if (values.paymentMethod === "CREDITO" && creditCards.length > 0 && !values.creditCardId) {
+      setError("Escolha o cartão de crédito.");
+      return;
+    }
+    if (values.paymentMethod !== "CREDITO" && banks.length > 0 && !values.bankId) {
+      setError(values.kind === "receita" ? "Escolha a conta que recebe." : "Escolha a instituição financeira.");
+      return;
+    }
     setSaving(true);
     try {
       await onSubmit(values);
@@ -80,8 +97,6 @@ export function TransactionForm({
       setSaving(false);
     }
   }
-
-  const filteredCategories = categories.filter((c) => c.type === (values.kind === "receita" ? "RECEITA" : "DESPESA"));
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -104,7 +119,12 @@ export function TransactionForm({
             <button
               key={kind}
               type="button"
-              onClick={() => set("kind", kind)}
+              onClick={() => {
+                if (kind === values.kind) return;
+                const cat = categories.find((c) => c.id === values.categoryId);
+                const wanted = kind === "receita" ? "RECEITA" : "DESPESA";
+                setValues((v) => ({ ...v, kind, categoryId: cat && cat.type !== wanted ? "" : v.categoryId }));
+              }}
               className={`flex-1 rounded-lg py-2 text-sm font-medium capitalize border ${
                 values.kind === kind
                   ? kind === "despesa"
@@ -140,21 +160,14 @@ export function TransactionForm({
           </div>
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted">Categoria</label>
-          <select
-            value={values.categoryId}
-            onChange={(e) => set("categoryId", e.target.value)}
-            className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
-          >
-            <option value="">Sem categoria</option>
-            {filteredCategories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <CategoryPicker
+          key={values.kind}
+          categories={categories}
+          type={values.kind === "receita" ? "RECEITA" : "DESPESA"}
+          value={values.categoryId}
+          onChange={(id) => set("categoryId", id)}
+          label={values.kind === "receita" ? "Categoria da receita" : "Categoria"}
+        />
 
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-muted">Forma de pagamento</label>
@@ -182,24 +195,13 @@ export function TransactionForm({
         </div>
 
         {values.paymentMethod === "CREDITO" ? (
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted">Cartão de Crédito</label>
-            <select
-              value={values.creditCardId}
-              onChange={(e) => set("creditCardId", e.target.value)}
-              className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">Selecione o cartão</option>
-              {creditCards.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            {creditCards.length === 0 && (
-              <span className="text-[11px] text-muted">Nenhum cartão cadastrado — cadastre em &quot;Cartões&quot;.</span>
-            )}
-          </div>
+          <ChoiceChips
+            label="Cartão de crédito"
+            options={creditCards.map((c) => ({ value: c.id, label: c.name, color: c.color }))}
+            value={values.creditCardId}
+            onChange={(v) => set("creditCardId", v)}
+            emptyText={<>Nenhum cartão cadastrado — cadastre em &quot;Cartões&quot;.</>}
+          />
         ) : null}
 
         {values.paymentMethod === "CREDITO" && !initial.id && (
@@ -235,42 +237,24 @@ export function TransactionForm({
         )}
 
         {values.paymentMethod !== "CREDITO" && (
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted">Instituição Financeira</label>
-            <select
-              value={values.bankId}
-              onChange={(e) => set("bankId", e.target.value)}
-              className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">Selecione o banco</option>
-              {banks.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-            {banks.length === 0 && (
-              <span className="text-[11px] text-muted">Nenhum banco cadastrado — cadastre em &quot;Bancos&quot;.</span>
-            )}
-          </div>
+          <ChoiceChips
+            label={values.kind === "receita" ? "Conta que recebe" : "Instituição financeira"}
+            options={banks.map((b) => ({ value: b.id, label: b.name, color: b.color }))}
+            value={values.bankId}
+            onChange={(v) => set("bankId", v)}
+            emptyText={<>Nenhum banco cadastrado — cadastre em &quot;Bancos&quot;.</>}
+          />
         )}
 
         {members.length > 0 && (
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted">De quem é (opcional)</label>
-            <select
-              value={values.memberId}
-              onChange={(e) => set("memberId", e.target.value)}
-              className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">Família (sem membro)</option>
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ChoiceChips
+            label="De quem é (opcional)"
+            options={members.map((m) => ({ value: m.id, label: m.name }))}
+            value={values.memberId}
+            onChange={(v) => set("memberId", v)}
+            allowClear
+            clearLabel="Família"
+          />
         )}
 
         <div className="flex flex-col gap-1">
@@ -283,7 +267,7 @@ export function TransactionForm({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-muted">
               {values.isInstallment ? "Valor total da compra (R$)" : "Valor (R$)"}
@@ -298,19 +282,19 @@ export function TransactionForm({
               placeholder="0,00"
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted">Status</label>
-            <select
-              value={values.status}
-              onChange={(e) => set("status", e.target.value as TransactionFormValues["status"])}
-              className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="PENDENTE">Pendente</option>
-              <option value="PAGO">Pago</option>
-              <option value="CONFIRMADO">Confirmado</option>
-            </select>
-          </div>
         </div>
+
+        <ChoiceChips
+          label="Status"
+          columns={3}
+          options={[
+            { value: "PENDENTE", label: "Pendente" },
+            { value: "PAGO", label: "Pago" },
+            { value: "CONFIRMADO", label: "Confirmado" },
+          ]}
+          value={values.status}
+          onChange={(v) => set("status", v as TransactionFormValues["status"])}
+        />
 
         {!values.isInstallment && (
           <label className="flex items-center gap-2 text-sm text-foreground">
@@ -323,6 +307,8 @@ export function TransactionForm({
             Lançamento recorrente
           </label>
         )}
+
+        {error && <p className="text-xs text-negative bg-negative-bg rounded-lg px-3 py-2">{error}</p>}
 
         <button
           type="submit"

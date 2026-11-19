@@ -4,6 +4,10 @@ export type CategoryOption = {
   id: string;
   label: string; // caminho completo, ex: "Despesas Mensais > Alimentação > Mercado"
   type: "RECEITA" | "DESPESA";
+  /** Nome curto (só o último nível), para botões. */
+  name: string;
+  parentId: string | null;
+  order: number;
 };
 
 export async function getCategoryOptions(householdId: string): Promise<CategoryOption[]> {
@@ -20,5 +24,12 @@ export async function getCategoryOptions(householdId: string): Promise<CategoryO
     return parts.join(" > ");
   }
 
-  return categories.map((c) => ({ id: c.id, label: pathFor(c.id), type: c.type }));
+  return categories.map((c) => ({
+    id: c.id,
+    label: pathFor(c.id),
+    type: c.type,
+    name: c.name,
+    parentId: c.parentId && byId.has(c.parentId) ? c.parentId : null,
+    order: c.order,
+  }));
 }
