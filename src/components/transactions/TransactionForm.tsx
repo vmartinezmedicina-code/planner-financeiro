@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarCheck, CalendarClock, X } from "lucide-react";
+import { CalendarCheck, CalendarClock, Repeat, X } from "lucide-react";
 import type { CategoryOption } from "@/lib/categories";
 import { formatDate, todayInputValue } from "@/lib/format";
 import { resolveInvoicePeriod, invoiceLabel } from "@/lib/invoices/invoicePeriod";
@@ -25,6 +25,12 @@ export type TransactionFormValues = {
   kind: "receita" | "despesa";
   status: "PENDENTE" | "PAGO" | "CONFIRMADO";
   isRecurring: boolean;
+  /** Recorrência: data final opcional (vazio = sem fim). */
+  recurrenceEnd: string;
+  /** Edição de ocorrência de série: aplicar só a este ou a este e aos próximos. */
+  scope: "one" | "future";
+  /** Preenchido quando o lançamento faz parte de uma série mensal. */
+  recurringSeries?: { dayOfMonth: number; endDate: string | null; active: boolean } | null;
   isInstallment: boolean;
   installmentsCount: string;
 };
@@ -45,6 +51,8 @@ export function emptyTransactionForm(defaultMemberId = ""): TransactionFormValue
     kind: "despesa",
     status: "PENDENTE",
     isRecurring: false,
+    recurrenceEnd: "",
+    scope: "one",
     isInstallment: false,
     installmentsCount: "2",
   };
@@ -82,6 +90,8 @@ export function TransactionForm({
   const [otherCashDate, setOtherCashDate] = useState(!!initial.settlementDate && initial.paymentMethod !== "CREDITO");
 
   const isCredit = values.paymentMethod === "CREDITO";
+  const inSeries = !!initial.id && !!initial.recurringSeries;
+  const [hasEnd, setHasEnd] = useState(!!initial.recurrenceEnd);
   const card = creditCards.find((c) => c.id === values.creditCardId);
   const eventDate = values.eventDate ? new Date(values.eventDate + "T00:00:00.000Z") : null;
 
@@ -113,13 +123,21 @@ export function TransactionForm({
       setError("Escolha o cartão de crédito.");
       return;
     }
+    if (!inSeries && values.isRecurring && hasEnd && !values.recurrenceEnd) {
+      setError("Informe até quando o lançamento se repete, ou escolha sem data de fim.");
+      return;
+    }
     if (values.paymentMethod !== "CREDITO" && banks.length > 0 && !values.bankId) {
       setError(values.kind === "receita" ? "Escolha a conta que recebe." : "Escolha a instituição financeira.");
       return;
     }
     setSaving(true);
     try {
-      await onSubmit({ ...values, settlementDate: !isCredit && otherCashDate ? values.settlementDate : "" });
+      await onSubmit({
+        ...values,
+        settlementDate: !isCredit && otherCashDate ? values.settlementDate : "",
+        recurrenceEnd: values.isRecurring && hasEnd ? values.recurrenceEnd : "",
+      });
     } finally {
       setSaving(false);
     }
@@ -365,16 +383,70 @@ export function TransactionForm({
         </div>
 
 
-        {!values.isInstallment && (
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            <input
-              type="checkbox"
-              checked={values.isRecurring}
-              onChange={(e) => set("isRecurring", e.target.checked)}
-              className="h-4 w-4 rounded border-border"
+        {inSeries ? (
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-3">
+            <p className="flex items-center gap-1.5 text-xs text-foreground">
+              <Repeat className="h-3.5 w-3.5 text-accent" />
+              Repete todo dia {initial.recurringSeries!.dayOfMonth}
+              {initial.recurringSeries!.endDate ? ` até ${formatDate(initial.recurringSeries!.endDate)}` : ", sem data de fim"}.
+            </p>
+            <ChoiceChips
+              label="Aplicar a alteração em"
+              columns={2}
+              options={[
+                { value: "one", label: "Só este" },
+                { value: "future", label: "Este e os próximos" },
+              ]}
+              value={values.scope}
+              onChange={(v) => set("scope", v as TransactionFormValues["scope"])}
             />
-            Lançamento recorrente
-          </label>
+          </div>
+        ) : (
+          !values.isInstallment && (
+            <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-3">
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={values.isRecurring}
+                  onChange={(e) => set("isRecurring", e.target.checked)}
+                  className="h-4 w-4 rounded border-border"
+                />
+                Repetir todo mês
+              </label>
+              {values.isRecurring && (
+                <>
+                  <ChoiceChips
+                    label="Até quando"
+                    columns={2}
+                    options={[
+                      { value: "never", label: "Sem data de fim" },
+                      { value: "until", label: "Até uma data" },
+                    ]}
+                    value={hasEnd ? "until" : "never"}
+                    onChange={(v) => {
+                      setHasEnd(v === "until");
+                      if (v === "never") set("recurrenceEnd", "");
+                    }}
+                  />
+                  {hasEnd && (
+                    <input
+                      type="date"
+                      value={values.recurrenceEnd}
+                      min={values.eventDate}
+                      onChange={(e) => set("recurrenceEnd", e.target.value)}
+                      aria-label="Última data da recorrência"
+                      className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
+                    />
+                  )}
+                  <p className="text-[11px] text-muted">
+                    Repete todo dia {eventDate ? eventDate.getUTCDate() : "—"}. Os próximos 12 meses são lançados agora e os
+                    seguintes entram sozinhos com o tempo
+                    {isCredit ? "; cada mês cai na fatura certa do cartão." : "."}
+                  </p>
+                </>
+              )}
+            </div>
+          )
         )}
 
         {error && <p className="text-xs text-negative bg-negative-bg rounded-lg px-3 py-2">{error}</p>}
@@ -388,7 +460,9 @@ export function TransactionForm({
             ? "Salvando..."
             : values.isInstallment
               ? `Criar ${values.installmentsCount || "?"} parcelas`
-              : "Salvar lançamento"}
+              : !initial.id && values.isRecurring
+                ? "Salvar e repetir todo mês"
+                : "Salvar lançamento"}
         </button>
       </form>
     </div>

@@ -4,6 +4,8 @@ import { getSession } from "@/lib/auth";
 import { TransactionStatus, PaymentMethod } from "@prisma/client";
 import { toCents } from "@/lib/money";
 import { updateTransaction, deleteTransaction, TransactionError } from "@/lib/finance/transactionService";
+import { convertToSeries, deleteSeriesFrom, updateSeriesFrom } from "@/lib/finance/recurrence";
+import { prisma } from "@/lib/prisma";
 import { assertMemberInHousehold, ScopeError } from "@/lib/household/householdService";
 
 const updateSchema = z.object({
@@ -19,6 +21,10 @@ const updateSchema = z.object({
   amountCents: z.number().int().optional(),
   status: z.nativeEnum(TransactionStatus).optional(),
   isRecurring: z.boolean().optional(),
+  // Ocorrência de recorrência: "one" = só este; "future" = este e os próximos.
+  scope: z.enum(["one", "future"]).optional(),
+  // Ao marcar como recorrente um lançamento avulso.
+  recurrence: z.object({ endDate: z.string().nullable().optional() }).optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -34,7 +40,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const memberId = d.memberId !== undefined ? await assertMemberInHousehold(d.memberId, session.householdId) : undefined;
     const amountCents = d.amountCents !== undefined ? d.amountCents : d.amount !== undefined ? toCents(d.amount) : undefined;
-    const transaction = await updateTransaction(id, session.householdId, {
+    const current = await prisma.transaction.findFirst({
+      where: { id, householdId: session.householdId },
+      select: { recurringSeriesId: true },
+    });
+    if (!current) return NextResponse.json({ error: "Lançamento não encontrado." }, { status: 404 });
+    const inSeries = !!current.recurringSeriesId;
+
+    const patchData = {
       ...(d.eventDate ? { eventDate: new Date(d.eventDate) } : {}),
       ...(d.settlementDate !== undefined ? { settlementDate: d.settlementDate ? new Date(d.settlementDate) : null } : {}),
       ...(d.categoryId !== undefined ? { categoryId: d.categoryId || null } : {}),
@@ -45,8 +58,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(d.description !== undefined ? { description: d.description } : {}),
       ...(amountCents !== undefined ? { amountCents } : {}),
       ...(d.status !== undefined ? { status: d.status } : {}),
-      ...(d.isRecurring !== undefined ? { isRecurring: d.isRecurring } : {}),
-    });
+      // Em série, a marcação de recorrente é da série; avulso só vira série pela conversão abaixo.
+      ...(d.isRecurring !== undefined && !inSeries && !d.isRecurring ? { isRecurring: false } : {}),
+    };
+
+    const transaction =
+      inSeries && d.scope === "future"
+        ? await updateSeriesFrom(id, session.householdId, patchData)
+        : await updateTransaction(id, session.householdId, patchData);
+
+    if (!inSeries && d.isRecurring === true) {
+      const endDate = d.recurrence?.endDate ? new Date(d.recurrence.endDate) : null;
+      const r = await convertToSeries(id, session.householdId, endDate);
+      return NextResponse.json({ ...transaction, recurringCount: r.count });
+    }
     return NextResponse.json(transaction);
   } catch (e) {
     if (e instanceof TransactionError || e instanceof ScopeError) {
@@ -57,11 +82,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
 
   const { id } = await params;
-  const result = await deleteTransaction(id, session.householdId);
+  // ?scope=future: numa recorrência, exclui este e os próximos e encerra a série.
+  const scope = new URL(req.url).searchParams.get("scope");
+  const result = scope === "future" ? await deleteSeriesFrom(id, session.householdId) : await deleteTransaction(id, session.householdId);
   return NextResponse.json({ ok: true, ...result });
 }

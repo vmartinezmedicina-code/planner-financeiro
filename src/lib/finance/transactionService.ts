@@ -41,6 +41,7 @@ export type CreateTransactionInput = {
   installmentPurchaseId?: string | null;
   installmentNumber?: number | null;
   transferGroupId?: string | null;
+  recurringSeriesId?: string | null;
 };
 
 /**
@@ -89,6 +90,7 @@ export async function createTransaction(input: CreateTransactionInput, db: Db = 
       installmentPurchaseId: input.installmentPurchaseId ?? null,
       installmentNumber: input.installmentNumber ?? null,
       transferGroupId: input.transferGroupId ?? null,
+      recurringSeriesId: input.recurringSeriesId ?? null,
       userId: input.userId,
       householdId: input.householdId,
     },

@@ -46,6 +46,8 @@ type Transaction = {
   status: "PENDENTE" | "PAGO" | "CONFIRMADO";
   invoice: { referenceYear: number; referenceMonth: number; dueDate: string; status: string; paidAt: string | null; paidCents: number; totalCents: number } | null;
   isRecurring: boolean;
+  recurringSeriesId: string | null;
+  recurringSeries: { dayOfMonth: number; endDate: string | null; active: boolean } | null;
   installmentNumber: number | null;
   installmentPurchase: { installmentsCount: number } | null;
 };
@@ -100,6 +102,7 @@ export function TransactionsBoard({
   const [bulkCategorizeOpen, setBulkCategorizeOpen] = useState(false);
   const [bulkCategoryId, setBulkCategoryId] = useState("");
   const [bulkType, setBulkType] = useState<"DESPESA" | "RECEITA">("DESPESA");
+  const [deletingSeries, setDeletingSeries] = useState<Transaction | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -200,6 +203,8 @@ export function TransactionsBoard({
         kind: json.kind === "receita" ? "receita" : "despesa",
         status: "PENDENTE",
         isRecurring: false,
+        recurrenceEnd: "",
+        scope: "one",
         isInstallment: false,
         installmentsCount: "2",
       });
@@ -247,27 +252,37 @@ export function TransactionsBoard({
       description: values.description,
       amount,
       isRecurring: values.isRecurring,
+      ...(values.isRecurring && !values.recurringSeries ? { recurrence: { endDate: values.recurrenceEnd || null } } : {}),
+      ...(values.id && values.recurringSeries ? { scope: values.scope } : {}),
       ...(quickPrefill && !values.id ? { source: "TEXT_AI" } : {}),
     };
 
-    if (values.id) {
-      await fetch(`/api/transactions/${values.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } else {
-      await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+    const res = values.id
+      ? await fetch(`/api/transactions/${values.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+      : await fetch("/api/transactions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setMessage(json.error ?? "Não foi possível salvar o lançamento.");
+      return;
     }
+    if (json.recurringCount) setMessage(`Recorrência criada: ${json.recurringCount} mês(es) lançado(s); os próximos entram sozinhos.`);
     setFormOpen(false);
     load();
   }
 
   async function handleDelete(t: Transaction) {
+    if (t.recurringSeriesId) {
+      setDeletingSeries(t);
+      return;
+    }
     const msg =
       t.kind === "TRANSFER"
         ? "Excluir esta transferência? Os dois lados (saída e entrada) serão removidos."
@@ -302,34 +317,12 @@ export function TransactionsBoard({
     load();
   }
 
-  async function handleBulkRecurring() {
-    if (selected.size === 0) return;
-    await fetch("/api/transactions/bulk", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: [...selected], action: "recurring", isRecurring: true }),
-    });
+  async function confirmDeleteSeries(scope: "one" | "future") {
+    if (!deletingSeries) return;
+    const t = deletingSeries;
+    setDeletingSeries(null);
+    await fetch(`/api/transactions/${t.id}${scope === "future" ? "?scope=future" : ""}`, { method: "DELETE" });
     load();
-  }
-
-  async function handleGenerateRecurring() {
-    const now = new Date();
-    const label = `${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
-    if (!confirm(`Gerar os lançamentos recorrentes de ${label} a partir do mês anterior? Itens que já existem não serão duplicados.`)) return;
-    setBusy(true);
-    try {
-      const res = await fetch("/api/recurring/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ year: now.getFullYear(), month: now.getMonth() + 1 }),
-      });
-      const json = await res.json();
-      if (res.ok) setMessage(`${json.created} lançamento(s) recorrente(s) criado(s); ${json.skipped} já existia(m).`);
-      else setMessage(json.error || "Erro ao gerar recorrentes.");
-      load();
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function handleAutoCategorize() {
@@ -383,7 +376,10 @@ export function TransactionsBoard({
         amount: String(Math.abs(editing.amount)),
         kind: editing.amount < 0 ? "despesa" : "receita",
         status: editing.status,
-        isRecurring: editing.isRecurring,
+        isRecurring: !!editing.recurringSeriesId,
+        recurrenceEnd: "",
+        scope: "one",
+        recurringSeries: editing.recurringSeries,
         isInstallment: false,
         installmentsCount: "2",
       }
@@ -586,22 +582,6 @@ export function TransactionsBoard({
         </button>
         <button
           type="button"
-          onClick={handleGenerateRecurring}
-          disabled={busy}
-          className="flex items-center gap-1.5 rounded-lg border border-border text-xs font-medium px-3 py-2 disabled:opacity-40"
-        >
-          <Repeat className="h-3.5 w-3.5" /> Gerar recorrentes do mês
-        </button>
-        <button
-          type="button"
-          onClick={handleBulkRecurring}
-          disabled={selected.size === 0}
-          className="flex items-center gap-1.5 rounded-lg border border-border text-xs font-medium px-3 py-2 disabled:opacity-40"
-        >
-          <Repeat className="h-3.5 w-3.5" /> Marcar recorrente
-        </button>
-        <button
-          type="button"
           onClick={() => fileInputRef.current?.click()}
           className="flex items-center gap-1.5 rounded-lg border border-border text-xs font-medium px-3 py-2"
         >
@@ -697,6 +677,11 @@ export function TransactionsBoard({
                       {t.member.name}
                     </span>
                   )}
+                  {t.recurringSeriesId && (
+                    <span className="text-[10px] text-accent bg-accent/10 rounded px-1.5 py-0.5 mt-0.5 mr-1 inline-flex items-center gap-1">
+                      <Repeat className="h-2.5 w-2.5" /> Mensal
+                    </span>
+                  )}
                   {t.installmentNumber && t.installmentPurchase && (
                     <span className="text-[10px] text-accent bg-accent/10 rounded px-1.5 py-0.5 mt-0.5 inline-block">
                       Parcela {t.installmentNumber}/{t.installmentPurchase.installmentsCount}
@@ -783,6 +768,29 @@ export function TransactionsBoard({
           onClose={() => setFormOpen(false)}
           onSubmit={handleSave}
         />
+      )}
+
+      {deletingSeries && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label="Excluir lançamento recorrente">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setDeletingSeries(null)} />
+          <div className="relative bg-surface border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-5 flex flex-col gap-3">
+            <h2 className="text-lg font-semibold text-foreground">Excluir lançamento recorrente</h2>
+            <p className="text-sm text-muted">
+              &quot;{deletingSeries.description}&quot; de {formatDate(deletingSeries.eventDate)} faz parte de uma repetição mensal.
+            </p>
+            <button type="button" onClick={() => confirmDeleteSeries("one")} className="rounded-lg border border-border text-sm font-medium px-4 py-2.5 text-left hover:bg-surface-muted">
+              Só este
+              <span className="block text-xs font-normal text-muted">Os outros meses continuam.</span>
+            </button>
+            <button type="button" onClick={() => confirmDeleteSeries("future")} className="rounded-lg border border-negative/40 text-negative text-sm font-medium px-4 py-2.5 text-left hover:bg-negative-bg">
+              Este e os próximos
+              <span className="block text-xs font-normal text-muted">Encerra a repetição a partir deste mês. Os anteriores ficam.</span>
+            </button>
+            <button type="button" onClick={() => setDeletingSeries(null)} className="text-sm text-muted px-3 py-2">
+              Cancelar
+            </button>
+          </div>
+        </div>
       )}
 
       {bulkCategorizeOpen && (

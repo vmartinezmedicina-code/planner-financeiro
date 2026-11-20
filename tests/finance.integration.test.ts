@@ -24,6 +24,7 @@ type Services = {
   upcoming: typeof import("../src/lib/calendar/upcoming");
   dashboard: typeof import("../src/lib/dashboard");
   analytics: typeof import("../src/lib/analytics/categoryAnalytics");
+  recurrence: typeof import("../src/lib/finance/recurrence");
 };
 let s: Services;
 
@@ -57,6 +58,7 @@ before(async () => {
     upcoming: await import("../src/lib/calendar/upcoming"),
     dashboard: await import("../src/lib/dashboard"),
     analytics: await import("../src/lib/analytics/categoryAnalytics"),
+    recurrence: await import("../src/lib/finance/recurrence"),
   };
   const p = s.prisma;
   await p.household.createMany({ data: [{ id: HH, name: "Teste" }, { id: OTHER_HH, name: "Outra" }] });
@@ -331,5 +333,162 @@ describe("status derivado ao gravar", () => {
     const r2 = await s.invoices.payInvoice({ invoiceId: t1.invoiceId!, bankId: bankA, userId, householdId: HH, paidAt: d("2027-02-21") });
     assert.equal(r2.status, "PAID", "dá para pagar o restante");
     for (const id of [r2.paymentId, r.paymentId, t2.id, t1.id]) await s.tx.deleteTransaction(id, HH);
+  });
+});
+
+describe("recorrência mensal", () => {
+  const today = d("2026-11-19");
+  const seriesTx = (seriesId: string) =>
+    s.prisma.transaction.findMany({
+      where: { recurringSeriesId: seriesId },
+      orderBy: { eventDate: "asc" },
+      select: { id: true, eventDate: true, amountCents: true, description: true, invoiceId: true, kind: true },
+    });
+  const ymd = (x: Date) => x.toISOString().slice(0, 10);
+
+  test("cria 12 meses; no cartão, cada ocorrência cai na fatura do seu mês", async () => {
+    const r = await s.recurrence.createRecurringSeries(
+      { householdId: HH, userId, eventDate: d("2026-11-19"), description: "Streaming", amountCents: -5590, paymentMethod: "CREDITO", creditCardId: cardId, categoryId: foodCategoryId },
+      today
+    );
+    assert.equal(r.count, 12);
+    const occ = await seriesTx(r.seriesId);
+    assert.equal(occ.length, 12);
+    assert.equal(ymd(occ[0].eventDate), "2026-11-19");
+    assert.equal(ymd(occ[11].eventDate), "2027-10-19");
+    assert.ok(occ.every((o) => o.kind === "CARD_PURCHASE" && o.amountCents === -5590));
+    assert.equal(new Set(occ.map((o) => o.invoiceId)).size, 12, "uma fatura por mês (fecha dia 10, compra dia 19)");
+  });
+
+  test("renovação completa os meses que faltam e não duplica se chamada duas vezes ao mesmo tempo", async () => {
+    const r = await s.recurrence.createRecurringSeries(
+      { householdId: HH, userId, eventDate: d("2026-11-05"), description: "Academia", amountCents: -12000, kind: "EXPENSE", bankId: bankA },
+      today
+    );
+    const later = d("2027-01-10"); // dois meses depois: horizonte vai até dez/2027
+    const [a, b] = await Promise.all([s.recurrence.ensureRecurringHorizon(HH, later), s.recurrence.ensureRecurringHorizon(HH, later)]);
+    const occ = await seriesTx(r.seriesId);
+    assert.equal(occ.length, 14);
+    assert.equal(ymd(occ[13].eventDate), "2027-12-05");
+    assert.ok(a + b >= 2, "gerou os meses que faltavam");
+    assert.equal(new Set(occ.map((o) => ymd(o.eventDate))).size, 14, "sem datas repetidas");
+    assert.equal(await s.recurrence.ensureRecurringHorizon(HH, later), 0, "já em dia");
+  });
+
+  test("data final: para de gerar e encerra a série", async () => {
+    const r = await s.recurrence.createRecurringSeries(
+      { householdId: HH, userId, eventDate: d("2026-11-10"), description: "Curso", amountCents: -30000, kind: "EXPENSE", bankId: bankA, endDate: d("2027-01-31") },
+      today
+    );
+    assert.equal(r.count, 3);
+    await s.recurrence.ensureRecurringHorizon(HH, d("2027-06-01"));
+    assert.equal((await seriesTx(r.seriesId)).length, 3, "não gera depois da data final");
+    const series = await s.prisma.recurringSeries.findUnique({ where: { id: r.seriesId } });
+    assert.equal(series!.active, false);
+  });
+
+  test("editar este e os próximos muda valor e dia só daqui para frente, e o modelo da série", async () => {
+    const r = await s.recurrence.createRecurringSeries(
+      { householdId: HH, userId, eventDate: d("2026-11-15"), description: "Internet", amountCents: -9990, kind: "EXPENSE", bankId: bankB },
+      today
+    );
+    const occ = await seriesTx(r.seriesId);
+    await s.recurrence.updateSeriesFrom(occ[2].id, HH, { amountCents: -11990, eventDate: d("2027-01-20"), description: "Internet fibra" });
+    const after = await seriesTx(r.seriesId);
+    assert.equal(after[0].amountCents, -9990);
+    assert.equal(after[1].amountCents, -9990);
+    assert.ok(after.slice(2).every((o) => o.amountCents === -11990 && o.description === "Internet fibra"));
+    assert.equal(ymd(after[2].eventDate), "2027-01-20");
+    assert.equal(ymd(after[3].eventDate), "2027-02-20", "o dia novo vale para os próximos meses");
+    const series = await s.prisma.recurringSeries.findUnique({ where: { id: r.seriesId } });
+    assert.equal(series!.amountCents, -11990);
+    assert.equal(series!.dayOfMonth, 20);
+  });
+
+  test("editar só este não mexe nos outros", async () => {
+    const r = await s.recurrence.createRecurringSeries(
+      { householdId: HH, userId, eventDate: d("2026-11-12"), description: "Luz", amountCents: -20000, kind: "EXPENSE", bankId: bankA },
+      today
+    );
+    const occ = await seriesTx(r.seriesId);
+    await s.tx.updateTransaction(occ[1].id, HH, { amountCents: -26000 });
+    const after = await seriesTx(r.seriesId);
+    assert.equal(after[1].amountCents, -26000);
+    assert.ok(after.filter((_, i) => i !== 1).every((o) => o.amountCents === -20000));
+  });
+
+  test("excluir este e os próximos mantém os anteriores e encerra a série", async () => {
+    const r = await s.recurrence.createRecurringSeries(
+      { householdId: HH, userId, eventDate: d("2026-11-08"), description: "Seguro", amountCents: -15000, kind: "EXPENSE", bankId: bankA },
+      today
+    );
+    const occ = await seriesTx(r.seriesId);
+    const res = await s.recurrence.deleteSeriesFrom(occ[3].id, HH);
+    assert.equal(res.deleted, 9);
+    assert.equal((await seriesTx(r.seriesId)).length, 3);
+    await s.recurrence.ensureRecurringHorizon(HH, d("2027-12-01"));
+    assert.equal((await seriesTx(r.seriesId)).length, 3, "não volta a gerar");
+    const series = await s.prisma.recurringSeries.findUnique({ where: { id: r.seriesId } });
+    assert.equal(series!.active, false);
+  });
+
+  test("transformar um lançamento existente em recorrente", async () => {
+    const t = await s.tx.createTransaction({ householdId: HH, userId, eventDate: d("2026-11-03"), description: "Plano de saúde", amountCents: -80000, kind: "EXPENSE", bankId: bankA });
+    const r = await s.recurrence.convertToSeries(t.id, HH, null, today);
+    assert.equal(r.count, 11, "os 11 meses seguintes");
+    const occ = await seriesTx(r.seriesId);
+    assert.equal(occ.length, 12);
+    assert.equal(occ[0].id, t.id);
+  });
+
+  test("não aceita ajuste nem lançamento de outra família", async () => {
+    await assert.rejects(
+      s.recurrence.createRecurringSeries({ householdId: HH, userId, eventDate: d("2026-11-03"), description: "x", amountCents: -1, kind: "ADJUSTMENT", bankId: bankA }, today),
+      /podem ser recorrentes/
+    );
+    const t = await s.tx.createTransaction({ householdId: HH, userId, eventDate: d("2026-11-03"), description: "y", amountCents: -100, kind: "EXPENSE", bankId: bankA });
+    await assert.rejects(s.recurrence.convertToSeries(t.id, OTHER_HH, null, today), /não encontrado/);
+    await s.tx.deleteTransaction(t.id, HH);
+  });
+});
+
+describe("recorrência no cartão: edição e exclusão em lote", () => {
+  const today = d("2026-11-19");
+  const invoiceTotals = async (seriesId: string) => {
+    const occ = await s.prisma.transaction.findMany({ where: { recurringSeriesId: seriesId }, select: { invoiceId: true } });
+    const ids = [...new Set(occ.map((o) => o.invoiceId!))];
+    const invs = await s.prisma.creditCardInvoice.findMany({ where: { id: { in: ids } }, select: { id: true, totalCents: true } });
+    return { ids, invs };
+  };
+
+  test("mudar só o valor de este e os próximos recalcula as faturas dos meses afetados", async () => {
+    const card2 = await s.prisma.creditCard.create({ data: { name: "Cartão recorrência", closingDay: 5, dueDay: 15, householdId: HH } });
+    const r = await s.recurrence.createRecurringSeries(
+      { householdId: HH, userId, eventDate: d("2026-11-20"), description: "Spotify", amountCents: -2190, paymentMethod: "CREDITO", creditCardId: card2.id },
+      today
+    );
+    const occ = await s.prisma.transaction.findMany({ where: { recurringSeriesId: r.seriesId }, orderBy: { eventDate: "asc" } });
+    // o formulário manda todos os campos, inclusive os que não mudaram
+    await s.recurrence.updateSeriesFrom(occ[4].id, HH, {
+      eventDate: occ[4].eventDate, paymentMethod: "CREDITO", creditCardId: card2.id, bankId: null,
+      description: "Spotify Família", amountCents: 3490, categoryId: null, memberId: null,
+    });
+    const after = await s.prisma.transaction.findMany({ where: { recurringSeriesId: r.seriesId }, orderBy: { eventDate: "asc" } });
+    assert.ok(after.slice(0, 4).every((o) => o.amountCents === -2190 && o.description === "Spotify"));
+    assert.ok(after.slice(4).every((o) => o.amountCents === -3490 && o.amount === -34.9 && o.description === "Spotify Família"), "sinal normalizado e Float espelhado");
+    const { invs } = await invoiceTotals(r.seriesId);
+    const total = invs.reduce((acc, i) => acc + i.totalCents, 0);
+    assert.equal(total, 4 * 2190 + 8 * 3490, "faturas refletem os novos valores");
+    const series = await s.prisma.recurringSeries.findUnique({ where: { id: r.seriesId } });
+    assert.equal(series!.amountCents, -3490);
+    assert.equal(series!.description, "Spotify Família");
+
+    const del = await s.recurrence.deleteSeriesFrom(after[0].id, HH);
+    assert.equal(del.deleted, 12);
+    const { invs: emptied } = await invoiceTotals(r.seriesId);
+    assert.equal(emptied.length, 0, "nenhuma ocorrência sobrou");
+    const invAfter = await s.prisma.creditCardInvoice.findMany({ where: { creditCardId: card2.id } });
+    assert.ok(invAfter.every((i) => i.totalCents === 0), "faturas zeradas após a exclusão");
+    assert.equal(await s.prisma.recurringSeries.findUnique({ where: { id: r.seriesId } }), null, "série sem ocorrências é removida");
   });
 });

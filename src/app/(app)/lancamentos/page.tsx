@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { listMembers } from "@/lib/household/householdService";
+import { ensureRecurringHorizon } from "@/lib/finance/recurrence";
 import { getCategoryOptions } from "@/lib/categories";
 import { TransactionsBoard } from "@/components/transactions/TransactionsBoard";
 
@@ -10,6 +11,7 @@ export default async function LancamentosPage({ searchParams }: { searchParams: 
   const session = await getSession();
   if (!session) redirect("/login");
   const hh = session.householdId;
+  await ensureRecurringHorizon(hh);
   const [categories, banks, creditCards, members] = await Promise.all([
     getCategoryOptions(hh),
     prisma.bank.findMany({ where: { householdId: hh }, orderBy: { order: "asc" }, select: { id: true, name: true, color: true } }),

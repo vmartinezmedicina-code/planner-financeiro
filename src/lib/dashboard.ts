@@ -3,6 +3,7 @@ import { TransactionKind } from "@prisma/client";
 import { todayAsUtcDate } from "@/lib/format";
 import { CONSUMPTION_KINDS } from "@/lib/finance/kinds";
 import { listBanksWithBalance } from "@/lib/finance/banks";
+import { ensureRecurringHorizon } from "@/lib/finance/recurrence";
 import { projectCashFlow, type CashFlowProjection } from "@/lib/finance/cashFlow";
 import { listInvoices, type InvoiceView } from "@/lib/invoices/invoiceService";
 import { getUpcoming, type UpcomingItem } from "@/lib/calendar/upcoming";
@@ -61,6 +62,8 @@ export type DashboardData = {
  */
 export async function getDashboardData(householdId: string, year: number, month: number): Promise<DashboardData> {
   const today = todayAsUtcDate();
+  // Completa as recorrências até 12 meses à frente antes de calcular (barato quando já está em dia).
+  await ensureRecurringHorizon(householdId, today);
   const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
   const startOfNextMonth = new Date(Date.UTC(year, month, 1));
   const first = shiftMonth(year, month, -(EVOLUTION_MONTHS - 1));

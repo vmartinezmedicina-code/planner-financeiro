@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { TransactionStatus, PaymentMethod, TransactionKind, TransactionSource, Prisma } from "@prisma/client";
 import { toCents, fromCents } from "@/lib/money";
 import { createTransaction, TransactionError } from "@/lib/finance/transactionService";
+import { createRecurringSeries } from "@/lib/finance/recurrence";
 import { assertMemberInHousehold, ScopeError } from "@/lib/household/householdService";
 import { todayAsUtcDate } from "@/lib/format";
 
@@ -24,6 +25,8 @@ const createSchema = z.object({
   status: z.nativeEnum(TransactionStatus).optional(),
   isRecurring: z.boolean().optional(),
   source: z.nativeEnum(TransactionSource).optional(),
+  // Com isRecurring: repete todo mês (12 meses à frente, renovando). endDate = última data (opcional).
+  recurrence: z.object({ endDate: z.string().nullable().optional() }).optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -81,6 +84,7 @@ export async function GET(req: NextRequest) {
         creditCardRef: true,
         member: { select: { id: true, name: true, color: true } },
         invoice: { select: { referenceYear: true, referenceMonth: true, dueDate: true, status: true, paidAt: true, paidCents: true, totalCents: true } },
+        recurringSeries: { select: { dayOfMonth: true, endDate: true, active: true } },
         installmentPurchase: { select: { installmentsCount: true } },
       },
       orderBy: { eventDate: "desc" },
@@ -117,7 +121,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const memberId = await assertMemberInHousehold(d.memberId, session.householdId);
-    const transaction = await createTransaction({
+    const base = {
       householdId: session.householdId,
       userId: session.userId,
       eventDate: new Date(d.eventDate),
@@ -133,7 +137,13 @@ export async function POST(req: NextRequest) {
       status: d.status,
       isRecurring: d.isRecurring,
       source: d.source ?? TransactionSource.MANUAL,
-    });
+    };
+    if (d.isRecurring) {
+      const endDate = d.recurrence?.endDate ? new Date(d.recurrence.endDate) : null;
+      const r = await createRecurringSeries({ ...base, endDate });
+      return NextResponse.json({ ...r.first, recurringCount: r.count }, { status: 201 });
+    }
+    const transaction = await createTransaction(base);
     return NextResponse.json(transaction, { status: 201 });
   } catch (e) {
     if (e instanceof TransactionError || e instanceof ScopeError) return NextResponse.json({ error: e.message }, { status: 400 });

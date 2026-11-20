@@ -29,6 +29,7 @@ model User {
   member         HouseholdMember?
 
   transactions         Transaction[]
+  recurringSeries      RecurringSeries[]
   investments          Investment[]
   plannedValues        PlannedValue[]
   installmentPurchases InstallmentPurchase[]
@@ -54,6 +55,7 @@ model Household {
   installmentPurchases InstallmentPurchase[]
   investments          Investment[]
   invoices             CreditCardInvoice[]
+  recurringSeries      RecurringSeries[]
 }
 
 model HouseholdMember {
@@ -68,7 +70,8 @@ model HouseholdMember {
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
 
-  transactions Transaction[]
+  transactions    Transaction[]
+  recurringSeries RecurringSeries[]
 
   @@index([householdId])
 }
@@ -87,8 +90,9 @@ model Bank {
   householdId         String?
   household           Household? @relation(fields: [householdId], references: [id])
 
-  transactions Transaction[]
-  paidInvoices CreditCardInvoice[]
+  transactions    Transaction[]
+  paidInvoices    CreditCardInvoice[]
+  recurringSeries RecurringSeries[]
 
   @@index([householdId])
 }
@@ -112,6 +116,7 @@ model CreditCard {
   transactions         Transaction[]
   installmentPurchases InstallmentPurchase[]
   invoices             CreditCardInvoice[]
+  recurringSeries      RecurringSeries[]
 
   @@index([householdId])
 }
@@ -181,6 +186,7 @@ model Category {
   plannedValues        PlannedValue[]
   transactions         Transaction[]
   installmentPurchases InstallmentPurchase[]
+  recurringSeries      RecurringSeries[]
 
   @@index([parentId])
   @@index([type])
@@ -277,7 +283,9 @@ model Transaction {
   invoice               CreditCardInvoice?   @relation(fields: [invoiceId], references: [id])
   status                TransactionStatus    @default(PENDENTE)
   isRecurring           Boolean              @default(false)
-  recurrenceRule        String? // ex: "MONTHLY"
+  recurrenceRule        String? // legado (não usado)
+  recurringSeriesId     String? // ocorrência de uma série recorrente mensal
+  recurringSeries       RecurringSeries?     @relation(fields: [recurringSeriesId], references: [id], onDelete: SetNull)
   installmentPurchaseId String? // preenchido quando o lançamento é 1 parcela de uma compra parcelada
   installmentPurchase   InstallmentPurchase? @relation(fields: [installmentPurchaseId], references: [id], onDelete: Cascade)
   installmentNumber     Int? // número desta parcela (1, 2, 3...)
@@ -297,6 +305,44 @@ model Transaction {
   @@index([memberId])
   @@index([transferGroupId])
   @@index([invoiceId])
+  @@index([recurringSeriesId])
+}
+
+// ---------------------------------------------------------------------------
+// Lançamento recorrente mensal. Guarda o "modelo" e gera as ocorrências
+// (Transaction normais, ligadas por recurringSeriesId) até 12 meses à frente,
+// renovando conforme o tempo passa. generatedThrough = índice do último mês
+// gerado (ano*12 + mês-1); 0 = nenhum. endDate = última data permitida (inclusiva).
+// ---------------------------------------------------------------------------
+model RecurringSeries {
+  id               String            @id @default(cuid())
+  householdId      String
+  household        Household         @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User              @relation(fields: [userId], references: [id])
+  description      String
+  amountCents      Int
+  kind             TransactionKind
+  paymentMethod    PaymentMethod
+  bankId           String?
+  bank             Bank?             @relation(fields: [bankId], references: [id], onDelete: SetNull)
+  creditCardId     String?
+  creditCard       CreditCard?       @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+  categoryId       String?
+  category         Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  memberId         String?
+  member           HouseholdMember?  @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  dayOfMonth       Int
+  startDate        DateTime
+  endDate          DateTime?
+  active           Boolean           @default(true)
+  generatedThrough Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  transactions Transaction[]
+
+  @@index([householdId, active])
 }
 
 // ---------------------------------------------------------------------------

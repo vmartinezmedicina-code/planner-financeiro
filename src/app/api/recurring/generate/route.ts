@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
       where: {
         householdId: session.householdId,
         isRecurring: true,
+        recurringSeriesId: null, // séries se renovam sozinhas
         installmentPurchaseId: null,
         kind: { in: CONSUMPTION_KINDS as TransactionKind[] },
         eventDate: { gte: prevStart, lt: targetStart },

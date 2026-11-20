@@ -58,6 +58,11 @@ Fase 2 (Dashboard 2.0) pronta no código, sem mudança de banco:
 - Saldo real (até hoje) × agendado (datas futuras): `src/lib/finance/banks.ts`; projeção em `finance/cashFlow.ts`; próximos vencimentos em `calendar/upcoming.ts`.
 - "Hoje" sempre no fuso de São Paulo (`todayAsUtcDate`, `todayInputValue` em `src/lib/format.ts`).
 
+Depois da Fase 2 (novembro/2026):
+- Formulário de lançamento com botões (bancos, cartões, membro) e categoria por toques (`components/ui/ChoiceChips`, `CategoryPicker`).
+- Crédito/débito automáticos: situação e data de efetivação derivadas (`src/lib/finance/paymentState.ts`); no crédito o formulário mostra a fatura e o vencimento; sem status manual.
+- Recorrência mensal de verdade: `RecurringSeries` + `Transaction.recurringSeriesId` (migration `20261119010000_recurring_series`), serviço em `src/lib/finance/recurrence.ts` (12 meses à frente, renovação automática ao abrir Dashboard/Lançamentos/Cartões, editar/excluir "só este" ou "este e os próximos").
+
 ## Estado atual (08/11/2026)
 Funcionando em produção: login com bloqueio, troca de senha, planejamento, lançamentos (inclusive por texto/IA), bancos, cartões, parcelamentos, investimentos, relatórios (Excel/PDF), assistente, dashboard novo.
 
