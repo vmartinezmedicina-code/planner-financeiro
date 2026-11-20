@@ -7,12 +7,25 @@
  * Para receita, realizado é a entrada (positivo).
  */
 
+import { budgetStatus, classifyNature, monthProgress, type BudgetInfo } from "./budgetPace";
+
 export type CategoryTypeValue = "RECEITA" | "DESPESA";
 
 export type CategoryRow = { id: string; name: string; parentId: string | null; type: CategoryTypeValue; order: number };
 
 /** Lançamento de consumo já reduzido ao necessário para agregar. */
-export type TxRow = { categoryId: string | null; amountCents: number; year: number; month: number };
+export type TxRow = { categoryId: string | null; amountCents: number; year: number; month: number; recurring?: boolean };
+
+/** Categoria com orçamento em atenção ou estourado, para o bloco "Atenção". */
+export type BudgetAlert = {
+  id: string;
+  name: string;
+  /** Caminho legível sem o agrupador raiz: "Alimentação › Mercado". */
+  path: string;
+  realizedCents: number;
+  plannedCents: number;
+  budget: BudgetInfo;
+};
 
 export const UNCATEGORIZED_ID = "__none__";
 export const OWN_ID = "__own__";
@@ -30,6 +43,8 @@ export type ChildSummary = {
   hasChildren: boolean;
   /** Linhas sintéticas (lançado direto no grupo) não abrem análise própria. */
   drillable: boolean;
+  /** Situação do orçamento (só despesas com planejado). */
+  budget: BudgetInfo | null;
 };
 
 export type CategoryAnalysis = {
@@ -44,7 +59,12 @@ export type CategoryAnalysis = {
     changePct: number | null;
     /** Lançado diretamente neste nó (sem contar os filhos). */
     ownCents: number;
+    budget: BudgetInfo | null;
   };
+  /** Categorias deste nível para baixo com orçamento em atenção (amarelo) ou estourado (vermelho). */
+  alerts: BudgetAlert[];
+  /** Fração do mês decorrida (0–1). */
+  progress: number;
   children: ChildSummary[];
   trend: { year: number; month: number; cents: number }[];
   /** ids de categoria cujos lançamentos pertencem a este nó (ele + descendentes). `null` = sem categoria. */
@@ -78,6 +98,8 @@ export function buildCategoryAnalysis(input: {
   year: number;
   month: number;
   monthsBack?: number;
+  /** Hoje (no fuso do app), para o ritmo do mês. Sem ele, o mês é tratado como encerrado. */
+  today?: Date;
 }): CategoryAnalysis | null {
   const { type, year, month } = input;
   const monthsBack = input.monthsBack ?? 6;
@@ -103,8 +125,18 @@ export function buildCategoryAnalysis(input: {
     m.set(k, (m.get(k) ?? 0) + cents);
     own.set(key, m);
   };
+  const counts = new Map<string, Map<number, { n: number; rec: number }>>();
+  const addCount = (key: string, k: number, recurring: boolean) => {
+    const m = counts.get(key) ?? new Map<number, { n: number; rec: number }>();
+    const c = m.get(k) ?? { n: 0, rec: 0 };
+    c.n += 1;
+    if (recurring) c.rec += 1;
+    m.set(k, c);
+    counts.set(key, m);
+  };
   for (const t of input.tx) {
     const k = ym(t.year, t.month);
+    if (t.categoryId && byId.has(t.categoryId)) addCount(t.categoryId, k, !!t.recurring);
     if (t.categoryId && byId.has(t.categoryId)) add(t.categoryId, k, sign * t.amountCents);
     else if (!t.categoryId) {
       const txType: CategoryTypeValue = t.amountCents < 0 ? "DESPESA" : "RECEITA";
@@ -129,6 +161,35 @@ export function buildCategoryAnalysis(input: {
     for (const c of childrenOf.get(id) ?? []) sum += plannedTotal(c.id);
     return sum;
   };
+  const countAt = (id: string, k: number): { n: number; rec: number } => {
+    const own = counts.get(id)?.get(k) ?? { n: 0, rec: 0 };
+    let n = own.n;
+    let rec = own.rec;
+    for (const c of childrenOf.get(id) ?? []) {
+      const sub = countAt(c.id, k);
+      n += sub.n;
+      rec += sub.rec;
+    }
+    return { n, rec };
+  };
+
+  const progress = input.today ? monthProgress(year, month, input.today) : 1;
+  const budgetFor = (id: string): BudgetInfo | null => {
+    if (type !== "DESPESA") return null; // receita abaixo do previsto não é "estouro"
+    const planned = plannedTotal(id);
+    if (planned <= 0) return null;
+    const realized = totalAt(id, current);
+    const now = countAt(id, current);
+    const nature = classifyNature({
+      previousCounts: [1, 2, 3].map((i) => countAt(id, current - i).n),
+      currentCount: now.n,
+      currentRecurringCount: now.rec,
+      realizedCents: realized,
+      plannedCents: planned,
+    });
+    return budgetStatus({ plannedCents: planned, realizedCents: realized, progress, nature });
+  };
+
   const descendants = (id: string): string[] => {
     const out = [id];
     for (const c of childrenOf.get(id) ?? []) out.push(...descendants(c.id));
@@ -159,6 +220,7 @@ export function buildCategoryAnalysis(input: {
       sharePct: parentRealized > 0 ? Math.round((realized / parentRealized) * 1000) / 10 : 0,
       hasChildren: (childrenOf.get(c.id)?.length ?? 0) > 0,
       drillable: true,
+      budget: budgetFor(c.id),
     };
   };
   const synthetic = (id: string, name: string, realized: number, prev: number, parentRealized: number, drillable: boolean): ChildSummary => ({
@@ -171,7 +233,29 @@ export function buildCategoryAnalysis(input: {
     sharePct: parentRealized > 0 ? Math.round((realized / parentRealized) * 1000) / 10 : 0,
     hasChildren: false,
     drillable,
+    budget: null,
   });
+  const readablePath = (id: string): string => {
+    const parts: string[] = [];
+    let cur = byId.get(id);
+    while (cur) {
+      if (cur.id === id || !isGroupingRoot(cur)) parts.unshift(cur.name);
+      cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+    }
+    return parts.join(" › ");
+  };
+  const alertsFor = (ids: string[]): BudgetAlert[] => {
+    if (type !== "DESPESA") return [];
+    const out: BudgetAlert[] = [];
+    for (const id of ids) {
+      if ((input.planned.get(id) ?? 0) <= 0) continue; // só onde o orçamento foi definido
+      const budget = budgetFor(id);
+      if (!budget || budget.state === "OK") continue;
+      out.push({ id, name: byId.get(id)!.name, path: readablePath(id), realizedCents: totalAt(id, current), plannedCents: plannedTotal(id), budget });
+    }
+    return out.sort((a, b) => (a.budget.state === b.budget.state ? b.budget.usedPct - a.budget.usedPct : a.budget.state === "OVER" ? -1 : 1));
+  };
+
   const visible = (r: ChildSummary) => r.realizedCents !== 0 || r.plannedCents !== 0 || r.previousCents !== 0;
   const sortRows = (rows: ChildSummary[]) => rows.sort((a, b) => b.realizedCents - a.realizedCents || b.plannedCents - a.plannedCents || a.name.localeCompare(b.name));
 
@@ -202,10 +286,13 @@ export function buildCategoryAnalysis(input: {
         previousCents: prev,
         changePct: pct(realized, prev),
         ownCents: 0,
+        budget: null,
       },
       children: sortRows(rows.filter(visible)),
       trend: trendOf(totalFn),
       categoryIds: [...roots.flatMap((r) => descendants(r.id)), null],
+      alerts: alertsFor(cats.map((c) => c.id)),
+      progress,
     };
   }
 
@@ -217,10 +304,12 @@ export function buildCategoryAnalysis(input: {
     return {
       type,
       path: [{ id: null, name: ROOT_NAME[type] }, { id: UNCATEGORIZED_ID, name: "Sem categoria" }],
-      node: { id: UNCATEGORIZED_ID, name: "Sem categoria", realizedCents: realized, plannedCents: 0, previousCents: prev, changePct: pct(realized, prev), ownCents: realized },
+      node: { id: UNCATEGORIZED_ID, name: "Sem categoria", realizedCents: realized, plannedCents: 0, previousCents: prev, changePct: pct(realized, prev), ownCents: realized, budget: null },
       children: [],
       trend: trendOf(totalFn),
       categoryIds: [null],
+      alerts: [],
+      progress,
     };
   }
 
@@ -255,9 +344,12 @@ export function buildCategoryAnalysis(input: {
       previousCents: prev,
       changePct: pct(realized, prev),
       ownCents: ownNow,
+      budget: budgetFor(node.id),
     },
     children: sortRows(rows.filter(visible)),
     trend: trendOf((k) => totalAt(node.id, k)),
     categoryIds: descendants(node.id),
+    alerts: alertsFor(descendants(node.id).filter((id) => id !== node.id)),
+    progress,
   };
 }

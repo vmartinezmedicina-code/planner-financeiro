@@ -32,6 +32,8 @@ export type DashboardData = {
     despesaChangePct: number | null;
     /** Despesa realizada / planejada (0–∞); null sem orçamento. */
     budgetUsedPct: number | null;
+    /** Categorias com orçamento estourado (vermelho) e em atenção pelo ritmo (amarelo). */
+    budgetAlerts: { over: number; warning: number };
     /** Receita do mês que ainda não entrou: lançada com data futura ou planejada e não lançada. */
     expectedIncomeCents: number;
   };
@@ -77,7 +79,7 @@ export async function getDashboardData(householdId: string, year: number, month:
     prisma.plannedValue.findMany({ where: { householdId, year, month }, select: { categoryId: true, amountCents: true } }),
     prisma.transaction.findMany({
       where: { householdId, eventDate: { gte: windowStart, lt: startOfNextMonth }, kind: { in: consumption } },
-      select: { eventDate: true, amountCents: true, categoryId: true },
+      select: { eventDate: true, amountCents: true, categoryId: true, recurringSeriesId: true },
     }),
     listBanksWithBalance(householdId, { asOf: today }),
     listInvoices(householdId, { today }),
@@ -96,9 +98,10 @@ export async function getDashboardData(householdId: string, year: number, month:
     amountCents: t.amountCents,
     year: t.eventDate.getUTCFullYear(),
     month: t.eventDate.getUTCMonth() + 1,
+    recurring: !!t.recurringSeriesId,
   }));
   const planned = new Map(plannedValues.map((p) => [p.categoryId, p.amountCents]));
-  const analysisInput = { categories, planned, tx: txRows, categoryId: null, year, month, monthsBack: EVOLUTION_MONTHS } as const;
+  const analysisInput = { categories, planned, tx: txRows, categoryId: null, year, month, monthsBack: EVOLUTION_MONTHS, today } as const;
   const despesas = buildCategoryAnalysis({ ...analysisInput, type: "DESPESA" })!;
   const receitas = buildCategoryAnalysis({ ...analysisInput, type: "RECEITA" })!;
 
@@ -167,6 +170,10 @@ export async function getDashboardData(householdId: string, year: number, month:
       despesaChangePct: despesas.node.changePct,
       budgetUsedPct: despesaPlannedCents > 0 ? Math.round((despesaRealizedCents / despesaPlannedCents) * 1000) / 10 : null,
       expectedIncomeCents,
+      budgetAlerts: {
+        over: despesas.alerts.filter((a) => a.budget.state === "OVER").length,
+        warning: despesas.alerts.filter((a) => a.budget.state === "WARNING").length,
+      },
     },
     balance: { totalCents, scheduledCents, accounts },
     cards: {

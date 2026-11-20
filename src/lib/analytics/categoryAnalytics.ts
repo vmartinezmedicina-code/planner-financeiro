@@ -1,6 +1,7 @@
 import { TransactionKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { CONSUMPTION_KINDS } from "@/lib/finance/kinds";
+import { todayAsUtcDate } from "@/lib/format";
 import { buildCategoryAnalysis, shiftMonth, type CategoryAnalysis, type CategoryTypeValue } from "./categoryTree";
 
 export type CategoryTransaction = {
@@ -46,19 +47,20 @@ export async function getCategoryAnalysis(
     prisma.plannedValue.findMany({ where: { householdId, year, month }, select: { categoryId: true, amountCents: true } }),
     prisma.transaction.findMany({
       where: { householdId, kind: { in: consumption }, eventDate: { gte: windowStart, lt: monthEnd } },
-      select: { categoryId: true, amountCents: true, eventDate: true },
+      select: { categoryId: true, amountCents: true, eventDate: true, recurringSeriesId: true },
     }),
   ]);
 
   const analysis = buildCategoryAnalysis({
     categories,
     planned: new Map(planned.map((p) => [p.categoryId, p.amountCents])),
-    tx: tx.map((t) => ({ categoryId: t.categoryId, amountCents: t.amountCents, year: t.eventDate.getUTCFullYear(), month: t.eventDate.getUTCMonth() + 1 })),
+    tx: tx.map((t) => ({ categoryId: t.categoryId, amountCents: t.amountCents, year: t.eventDate.getUTCFullYear(), month: t.eventDate.getUTCMonth() + 1, recurring: !!t.recurringSeriesId })),
     type: params.type,
     categoryId: params.categoryId,
     year,
     month,
     monthsBack: MONTHS_BACK,
+    today: todayAsUtcDate(),
   });
   if (!analysis) return null;
 

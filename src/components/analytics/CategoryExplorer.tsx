@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { clsx } from "clsx";
-import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { MONTH_NAMES } from "@/lib/format";
 import { formatCents } from "@/lib/money";
 import type { CategoryAnalysisResponse } from "@/lib/analytics/categoryAnalytics";
 import { TrendChart } from "./TrendChart";
+import { BudgetRing } from "./BudgetRing";
 import { TransactionDrilldown } from "./TransactionDrilldown";
 
 type CategoryType = "RECEITA" | "DESPESA";
@@ -127,22 +128,35 @@ export function CategoryExplorer({
 
       {/* Resumo do nó */}
       <div className="flex flex-col gap-2">
-        <div>
-          <p className="text-2xl font-semibold text-foreground tabular-nums">{formatCents(node.realizedCents)}</p>
-          <p className="text-xs text-muted">
-            {MONTH_NAMES[month - 1]} de {year}
-          </p>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-2xl font-semibold text-foreground tabular-nums">{formatCents(node.realizedCents)}</p>
+            <p className="text-xs text-muted">
+              {MONTH_NAMES[month - 1]} de {year}
+            </p>
+          </div>
+          {node.budget && <BudgetRing budget={node.budget} size={48} />}
         </div>
         {node.plannedCents > 0 && (
           <div className="flex flex-col gap-1">
             <div className="h-1.5 rounded-full bg-surface-muted overflow-hidden">
-              <div className={clsx("h-full rounded-full", over ? "bg-negative" : "bg-accent")} style={{ width: `${usedPct}%` }} />
+              <div
+                className={clsx("h-full rounded-full", over ? "bg-negative" : node.budget?.state === "WARNING" ? "bg-warning-fg" : "bg-accent")}
+                style={{ width: `${usedPct}%` }}
+              />
             </div>
-            <p className={clsx("text-xs", over ? "text-negative" : "text-muted")}>
+            <p className={clsx("text-xs", over ? "text-negative" : node.budget?.state === "WARNING" ? "text-warning-fg" : "text-muted")}>
               {over
                 ? `${formatCents(node.realizedCents - node.plannedCents)} acima do planejado (${formatCents(node.plannedCents)})`
                 : `${Math.round(usedPct)}% do planejado (${formatCents(node.plannedCents)})`}
+              {node.budget && !over && <> · {node.budget.reason}</>}
             </p>
+            {node.budget?.projectedCents != null && (
+              <p className={clsx("text-xs", node.budget.projectedCents > node.plannedCents ? "text-warning-fg" : "text-muted")}>
+                No ritmo atual, fecha o mês em {formatCents(node.budget.projectedCents)}
+                {node.budget.projectedCents > node.plannedCents && ` (${formatCents(node.budget.projectedCents - node.plannedCents)} acima)`}.
+              </p>
+            )}
           </div>
         )}
         <p className="text-xs text-muted flex items-center gap-1.5 flex-wrap">
@@ -150,6 +164,32 @@ export function CategoryExplorer({
           <Change pct={node.changePct} type={type} />
         </p>
       </div>
+
+      {/* Atenção: orçamento estourado ou acelerado neste nível para baixo */}
+      {data.alerts.length > 0 && (
+        <div className="flex flex-col gap-1.5 rounded-xl border border-warning-fg/30 bg-warning-bg/40 p-3">
+          <h3 className="text-xs font-semibold text-warning-fg uppercase tracking-wide flex items-center gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5" /> Atenção ({data.alerts.length})
+          </h3>
+          {data.alerts.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => setCategoryId(a.id)}
+              className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 -mx-1.5 text-left hover:bg-surface/60"
+            >
+              <BudgetRing budget={a.budget} size={36} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-foreground truncate">{a.path}</span>
+                <span className={clsx("block text-[11px]", a.budget.state === "OVER" ? "text-negative" : "text-warning-fg")}>
+                  {a.budget.reason} · {formatCents(a.realizedCents)} de {formatCents(a.plannedCents)}
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 text-muted shrink-0" />
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Tendência */}
       <div className="flex flex-col gap-2">
@@ -167,7 +207,10 @@ export function CategoryExplorer({
               const content = (
                 <>
                   <span className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-foreground truncate">{c.name}</span>
+                    <span className="flex items-center gap-2 min-w-0">
+                      {c.budget && <BudgetRing budget={c.budget} size={24} />}
+                      <span className="text-sm font-medium text-foreground truncate">{c.name}</span>
+                    </span>
                     <span className="flex items-center gap-1 shrink-0">
                       <span className="text-sm font-medium tabular-nums">{formatCents(c.realizedCents)}</span>
                       {c.drillable && <ChevronRight className="h-4 w-4 text-muted" />}

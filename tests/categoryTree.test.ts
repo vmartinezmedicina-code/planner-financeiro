@@ -167,3 +167,65 @@ describe("receitas e casos de borda", () => {
     assert.deepEqual(a.children.map((c) => c.name), ["Casa", "Mercado"]);
   });
 });
+
+describe("alertas de orçamento na árvore", () => {
+  const today = new Date("2026-11-10T00:00:00.000Z"); // 1/3 do mês
+  const cats: CategoryRow[] = [
+    { id: "root", name: "Despesas Mensais", parentId: null, type: "DESPESA", order: 0 },
+    { id: "ali", name: "Alimentação", parentId: "root", type: "DESPESA", order: 0 },
+    { id: "mer", name: "Mercado", parentId: "ali", type: "DESPESA", order: 0 },
+    { id: "res", name: "Restaurantes", parentId: "ali", type: "DESPESA", order: 1 },
+    { id: "mor", name: "Moradia", parentId: "root", type: "DESPESA", order: 1 },
+    { id: "alu", name: "Aluguel", parentId: "mor", type: "DESPESA", order: 0 },
+    { id: "luz", name: "Luz", parentId: "mor", type: "DESPESA", order: 1 },
+  ];
+  const tx: TxRow[] = [
+    // Mercado: várias compras por mês (variável); 85% do planejado no dia 10 → atenção
+    ...[9, 10, 8].flatMap((m) => [t("mer", -300, m), t("mer", -300, m), t("mer", -300, m)]),
+    t("mer", -500, 11), t("mer", -350, 11),
+    // Restaurantes: variável, 40% → ok
+    t("res", -100, 10), t("res", -100, 10), t("res", -120, 11),
+    // Aluguel: uma vez por mês (fixa), 100% no dia 5 → ok
+    t("alu", -2500, 9), t("alu", -2500, 10), t("alu", -2500, 11),
+    // Luz: fixa, passou do planejado → vermelho
+    t("luz", -200, 10), t("luz", -260, 11),
+  ];
+  const planned = new Map<string, number>([["mer", 100000], ["res", 30000], ["alu", 250000], ["luz", 22000]]);
+  const run = (categoryId: string | null) => buildCategoryAnalysis({ categories: cats, planned, tx, type: "DESPESA", categoryId, year: 2026, month: 11, today })!;
+
+  test("bloco Atenção na raiz: vermelho primeiro, depois amarelo; conta fixa em 100% não aparece", () => {
+    const a = run(null);
+    assert.deepEqual(a.alerts.map((x) => [x.path, x.budget.state]), [["Moradia › Luz", "OVER"], ["Alimentação › Mercado", "WARNING"]]);
+    assert.equal(a.progress, 10 / 30);
+  });
+
+  test("cada linha traz o anel com o estado e a natureza", () => {
+    const ali = run("ali");
+    const mer = ali.children.find((c) => c.name === "Mercado")!;
+    assert.equal(mer.budget!.state, "WARNING");
+    assert.equal(mer.budget!.nature, "VARIABLE");
+    assert.equal(mer.budget!.usedPct, 85);
+    assert.equal(mer.budget!.projectedCents, 255000, "no ritmo atual fecha o mês em R$ 2.550");
+    const mor = run("mor");
+    const alu = mor.children.find((c) => c.name === "Aluguel")!;
+    assert.equal(alu.budget!.state, "OK");
+    assert.equal(alu.budget!.nature, "FIXED");
+  });
+
+  test("no nó, o Atenção lista só os descendentes", () => {
+    assert.deepEqual(run("ali").alerts.map((x) => x.name), ["Mercado"]);
+    assert.deepEqual(run("mor").alerts.map((x) => x.name), ["Luz"]);
+    assert.deepEqual(run("mer").alerts, []);
+  });
+
+  test("receitas não têm alerta de orçamento", () => {
+    const r = buildCategoryAnalysis({ categories: [{ id: "s", name: "Salário", parentId: null, type: "RECEITA", order: 0 }], planned: new Map([["s", 100]]), tx: [t("s", 1, 11)], type: "RECEITA", categoryId: null, year: 2026, month: 11, today })!;
+    assert.deepEqual(r.alerts, []);
+    assert.equal(r.children[0].budget, null);
+  });
+
+  test("mês encerrado: só o que passou do planejado", () => {
+    const a = buildCategoryAnalysis({ categories: cats, planned, tx, type: "DESPESA", categoryId: null, year: 2026, month: 11, today: new Date("2026-12-05T00:00:00.000Z") })!;
+    assert.deepEqual(a.alerts.map((x) => x.name), ["Luz"]);
+  });
+});

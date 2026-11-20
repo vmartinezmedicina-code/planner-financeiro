@@ -76,7 +76,7 @@ export function DashboardBoard({ initialData }: { initialData: DashboardData }) 
       )}
 
       <DashboardKpis data={data} onOpen={setDrawer} />
-      <DashboardSecondary data={data} />
+      <DashboardSecondary data={data} onOpenExpenses={() => setDrawer("despesas")} />
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <div className="lg:col-span-3">

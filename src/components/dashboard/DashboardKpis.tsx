@@ -113,36 +113,47 @@ export function DashboardKpis({ data, onOpen }: { data: DashboardData; onOpen: (
 function SecondaryItem({ label, value, hint, tone }: { label: string; value: string; hint?: ReactNode; tone?: "negative" | "default" }) {
   return (
     <div className="flex flex-col gap-0.5 min-w-0">
-      <dt className="text-[11px] font-medium text-muted truncate">{label}</dt>
-      <dd className={clsx("text-sm font-semibold tabular-nums", tone === "negative" ? "text-negative" : "text-foreground")}>{value}</dd>
-      {hint && <dd className="text-[11px] text-muted">{hint}</dd>}
+      <span className="text-[11px] font-medium text-muted truncate">{label}</span>
+      <span className={clsx("text-sm font-semibold tabular-nums", tone === "negative" ? "text-negative" : "text-foreground")}>{value}</span>
+      {hint && <span className="text-[11px] text-muted">{hint}</span>}
     </div>
   );
 }
 
 /** Indicadores secundários: discretos, só leitura. */
-export function DashboardSecondary({ data }: { data: DashboardData }) {
+export function DashboardSecondary({ data, onOpenExpenses }: { data: DashboardData; onOpenExpenses: () => void }) {
   const { period, upcoming, projection } = data;
   const used = period.budgetUsedPct;
   const overBudget = used !== null && used > 100;
   const goesNegative = projection.lowestCents < 0 && projection.lowestDate !== null;
+  const { over, warning } = period.budgetAlerts;
+  const alertText = [over ? `${over} acima` : null, warning ? `${warning} em atenção` : null].filter(Boolean).join(" · ");
 
   return (
-    <dl className="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-3 rounded-2xl border border-border bg-surface px-4 sm:px-5 py-3.5">
-      <SecondaryItem
-        label="Orçamento utilizado"
-        value={used === null ? "—" : `${used.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%`}
-        tone={overBudget ? "negative" : "default"}
-        hint={
-          used === null ? (
-            "sem orçamento neste mês"
-          ) : (
-            <span className="block h-1 mt-1 rounded-full bg-surface-muted overflow-hidden">
-              <span className={clsx("block h-full rounded-full", overBudget ? "bg-negative" : "bg-accent")} style={{ width: `${Math.min(100, used)}%` }} />
-            </span>
-          )
-        }
-      />
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-3 rounded-2xl border border-border bg-surface px-4 sm:px-5 py-3.5">
+      <button type="button" onClick={onOpenExpenses} className="text-left rounded-lg -m-1.5 p-1.5 hover:bg-surface-muted" aria-label="Ver orçamento por categoria">
+        <SecondaryItem
+          label="Orçamento utilizado"
+          value={used === null ? "—" : `${used.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%`}
+          tone={overBudget ? "negative" : "default"}
+          hint={
+            used === null ? (
+              "sem orçamento neste mês"
+            ) : (
+              <>
+                <span className="block h-1 mt-1 rounded-full bg-surface-muted overflow-hidden">
+                  <span className={clsx("block h-full rounded-full", overBudget ? "bg-negative" : "bg-accent")} style={{ width: `${Math.min(100, used)}%` }} />
+                </span>
+                {alertText && (
+                  <span className={clsx("block mt-1 font-medium", over ? "text-negative" : "text-warning-fg")}>
+                    {alertText}
+                  </span>
+                )}
+              </>
+            )
+          }
+        />
+      </button>
       <SecondaryItem
         label="Receitas previstas"
         value={formatCents(period.expectedIncomeCents)}
@@ -165,6 +176,6 @@ export function DashboardSecondary({ data }: { data: DashboardData }) {
           )
         }
       />
-    </dl>
+    </div>
   );
 }
