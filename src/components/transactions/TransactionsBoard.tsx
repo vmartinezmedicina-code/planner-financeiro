@@ -21,6 +21,8 @@ import { formatCurrency, formatDate, toDateInputValue, todayInputValue } from "@
 import type { CategoryOption } from "@/lib/categories";
 import { PAYMENT_METHOD_LABEL } from "@/lib/paymentMethod";
 import { KIND_LABEL, isConsumption, type TransactionKindValue } from "@/lib/finance/kinds";
+import { derivePaymentState, type PaymentStateValue } from "@/lib/finance/paymentState";
+import { todayAsUtcDate } from "@/lib/format";
 import { CategoryPicker } from "@/components/ui/CategoryPicker";
 import { ChoiceChips } from "@/components/ui/ChoiceChips";
 import { TransactionForm, TransactionFormValues, PaymentMethodValue, emptyTransactionForm } from "./TransactionForm";
@@ -42,6 +44,7 @@ type Transaction = {
   memberId: string | null;
   member: { id: string; name: string; color: string } | null;
   status: "PENDENTE" | "PAGO" | "CONFIRMADO";
+  invoice: { referenceYear: number; referenceMonth: number; dueDate: string; status: string; paidAt: string | null; paidCents: number; totalCents: number } | null;
   isRecurring: boolean;
   installmentNumber: number | null;
   installmentPurchase: { installmentsCount: number } | null;
@@ -57,16 +60,12 @@ type ListResponse = {
   uncategorizedCount: number;
 };
 
-const STATUS_LABEL: Record<Transaction["status"], string> = {
-  PENDENTE: "Pendente",
-  PAGO: "Pago",
-  CONFIRMADO: "Confirmado",
-};
-
-const STATUS_CLASS: Record<Transaction["status"], string> = {
-  PENDENTE: "bg-warning-bg text-warning-fg",
-  PAGO: "bg-positive-bg text-positive",
-  CONFIRMADO: "bg-accent/10 text-accent",
+// Situação derivada (não digitada): ver finance/paymentState.
+const STATE_CLASS: Record<PaymentStateValue, string> = {
+  PAID: "bg-positive-bg text-positive",
+  SCHEDULED: "bg-surface-muted text-muted",
+  ON_INVOICE: "bg-accent/10 text-accent",
+  OVERDUE: "bg-negative-bg text-negative",
 };
 
 export function TransactionsBoard({
@@ -104,6 +103,7 @@ export function TransactionsBoard({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const today = todayAsUtcDate();
 
   const [quickText, setQuickText] = useState("");
   const [quickLoading, setQuickLoading] = useState(false);
@@ -116,7 +116,7 @@ export function TransactionsBoard({
     if (endDate) params.set("endDate", endDate);
     if (bankId !== "Todas") params.set("bankId", bankId);
     if (creditCardId !== "Todos") params.set("creditCardId", creditCardId);
-    if (status !== "Todos") params.set("status", status);
+    if (status !== "Todos") params.set("situacao", status);
     if (kindFilter !== "Todos") params.set("kind", kindFilter);
     if (search) params.set("search", search);
     params.set("page", String(page));
@@ -246,7 +246,6 @@ export function TransactionsBoard({
       memberId: values.memberId || null,
       description: values.description,
       amount,
-      status: values.status,
       isRecurring: values.isRecurring,
       ...(quickPrefill && !values.id ? { source: "TEXT_AI" } : {}),
     };
@@ -512,7 +511,7 @@ export function TransactionsBoard({
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted">Status</label>
+          <label className="text-xs font-medium text-muted">Situação</label>
           <select
             value={status}
             onChange={(e) => {
@@ -522,9 +521,8 @@ export function TransactionsBoard({
             className="rounded-lg border border-border bg-surface-muted px-2.5 py-1.5 text-sm outline-none"
           >
             <option>Todos</option>
-            <option value="PENDENTE">Pendente</option>
-            <option value="PAGO">Pago</option>
-            <option value="CONFIRMADO">Confirmado</option>
+            <option value="pago">Pago</option>
+            <option value="aberto">A pagar (agendado ou na fatura)</option>
           </select>
         </div>
         <div className="flex flex-col gap-1">
@@ -646,14 +644,14 @@ export function TransactionsBoard({
                 />
               </th>
               <th className="p-2.5">Data evento</th>
-              <th className="p-2.5">Data efetivação</th>
+              <th className="p-2.5" title="Data em que o dinheiro sai ou entra: vencimento da fatura, no crédito">Efetivação</th>
               <th className="p-2.5">Categoria</th>
               <th className="p-2.5">Forma</th>
               <th className="p-2.5">Instituição</th>
               <th className="p-2.5">Cartão</th>
               <th className="p-2.5">Descrição</th>
               <th className="p-2.5 text-right">Valor</th>
-              <th className="p-2.5">Status</th>
+              <th className="p-2.5">Situação</th>
               <th className="p-2.5 text-right">Ações</th>
             </tr>
           </thead>
@@ -665,7 +663,10 @@ export function TransactionsBoard({
                 </td>
                 <td className="p-2.5 whitespace-nowrap">{formatDate(t.eventDate)}</td>
                 <td className="p-2.5 whitespace-nowrap text-muted">
-                  {t.settlementDate ? formatDate(t.settlementDate) : "—"}
+                  {(() => {
+                    const cash = derivePaymentState(t, today).cashDate;
+                    return cash ? formatDate(cash) : "—";
+                  })()}
                 </td>
                 <td className="p-2.5 max-w-[220px]">
                   {!isConsumption(t.kind) ? (
@@ -711,7 +712,10 @@ export function TransactionsBoard({
                   {formatCurrency(t.amount)}
                 </td>
                 <td className="p-2.5">
-                  <span className={clsx("text-xs rounded-full px-2 py-0.5", STATUS_CLASS[t.status])}>{STATUS_LABEL[t.status]}</span>
+                  {(() => {
+                    const st = derivePaymentState(t, today);
+                    return <span className={clsx("text-xs rounded-full px-2 py-0.5 whitespace-nowrap", STATE_CLASS[st.state])}>{st.label}</span>;
+                  })()}
                 </td>
                 <td className="p-2.5">
                   <div className="flex items-center justify-end gap-1">

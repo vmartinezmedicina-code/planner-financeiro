@@ -3,6 +3,19 @@ import { prisma } from "@/lib/prisma";
 import { fromCents } from "@/lib/money";
 import { deriveKind, normalizeSign, paymentMethodForKind, resolveLinksForKind, type TransactionKindValue } from "./kinds";
 import { ensureInvoiceForPurchase, recalcInvoiceTotal, revertInvoicePayment } from "@/lib/invoices/invoiceService";
+import { todayAsUtcDate } from "@/lib/format";
+
+/**
+ * Status gravado quando o chamador não informa: compra no cartão fica
+ * pendente até a fatura ser paga (o pagamento da fatura atualiza); lançamento
+ * de conta está pago se a data de caixa já chegou. A tela mostra a situação
+ * derivada (finance/paymentState); a coluna fica coerente para relatórios.
+ */
+function defaultStatus(kind: TransactionKindValue, eventDate: Date, settlementDate: Date | null | undefined): TransactionStatus {
+  if (kind === "CARD_PURCHASE") return TransactionStatus.PENDENTE;
+  const cash = settlementDate ?? eventDate;
+  return cash.getTime() <= todayAsUtcDate().getTime() ? TransactionStatus.PAGO : TransactionStatus.PENDENTE;
+}
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -71,7 +84,7 @@ export async function createTransaction(input: CreateTransactionInput, db: Db = 
       invoiceId,
       categoryId: input.categoryId ?? null,
       memberId: input.memberId ?? null,
-      status: input.status ?? TransactionStatus.PENDENTE,
+      status: input.status ?? defaultStatus(kind, input.eventDate, input.settlementDate),
       isRecurring: input.isRecurring ?? false,
       installmentPurchaseId: input.installmentPurchaseId ?? null,
       installmentNumber: input.installmentNumber ?? null,
@@ -160,7 +173,13 @@ export async function updateTransaction(id: string, householdId: string, patch: 
         invoiceId,
         ...(patch.categoryId !== undefined ? { categoryId: patch.categoryId } : {}),
         ...(patch.memberId !== undefined ? { memberId: patch.memberId } : {}),
-        ...(patch.status !== undefined ? { status: patch.status } : {}),
+        ...(patch.status !== undefined
+          ? { status: patch.status }
+          : kind !== "CARD_PURCHASE" && (patch.eventDate !== undefined || patch.settlementDate !== undefined || kind !== currentKind)
+            ? { status: defaultStatus(kind, eventDate, patch.settlementDate !== undefined ? patch.settlementDate : current.settlementDate) }
+            : kind === "CARD_PURCHASE" && currentKind !== "CARD_PURCHASE"
+              ? { status: TransactionStatus.PENDENTE }
+              : {}),
         ...(patch.isRecurring !== undefined ? { isRecurring: patch.isRecurring } : {}),
       },
     });

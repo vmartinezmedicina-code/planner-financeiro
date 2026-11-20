@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { TransactionStatus, TransactionSource, TransactionKind } from "@prisma/client";
+import { TransactionSource, TransactionKind } from "@prisma/client";
 import { CONSUMPTION_KINDS, type TransactionKindValue } from "@/lib/finance/kinds";
 import { createTransaction } from "@/lib/finance/transactionService";
 
@@ -67,7 +67,6 @@ export async function POST(req: NextRequest) {
       memberId: t.memberId,
       description: t.description,
       amountCents: t.amountCents,
-      status: TransactionStatus.PENDENTE,
       isRecurring: true,
       source: TransactionSource.SYSTEM,
     });

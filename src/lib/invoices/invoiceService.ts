@@ -138,16 +138,15 @@ export async function payInvoice(input: {
       include: { creditCard: { select: { id: true, name: true } } },
     });
     if (!inv) throw new InvoiceError("Fatura não encontrada.");
-    if (inv.status === "PAID") throw new InvoiceError("Esta fatura já está paga.");
 
     const bank = await tx.bank.findFirst({ where: { id: input.bankId, householdId: input.householdId }, select: { id: true } });
     if (!bank) throw new InvoiceError("Conta não encontrada.");
 
     const total = await recalcInvoiceTotal(tx, inv.id);
     const remaining = Math.max(0, total - inv.paidCents);
+    if (remaining === 0) throw new InvoiceError("Esta fatura já está paga.");
     const amount = input.amountCents ?? remaining;
     if (!Number.isInteger(amount) || amount <= 0) throw new InvoiceError("Valor do pagamento inválido.");
-    if (remaining === 0) throw new InvoiceError("Não há valor em aberto nesta fatura.");
 
     const paidAt = input.paidAt ?? todayAsUtcDate();
     const payment = await tx.transaction.create({

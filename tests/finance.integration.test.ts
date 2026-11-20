@@ -301,3 +301,35 @@ describe("próximos vencimentos e dashboard (Fase 2)", () => {
     assert.equal(await s.analytics.getCategoryAnalysis(OTHER_HH, { type: "DESPESA", categoryId: foodCategoryId, year: 2026, month: 11 }), null);
   });
 });
+
+describe("status derivado ao gravar", () => {
+  test("compra no cartão fica pendente até a fatura ser paga; conta paga se a data já passou", async () => {
+    const card = await s.tx.createTransaction({ householdId: HH, userId, eventDate: d("2026-11-05"), description: "cartao", amountCents: -1000, paymentMethod: "CREDITO", creditCardId: cardId });
+    const past = await s.tx.createTransaction({ householdId: HH, userId, eventDate: d("2026-11-01"), description: "passado", amountCents: -1000, kind: "EXPENSE", bankId: bankA });
+    const future = await s.tx.createTransaction({ householdId: HH, userId, eventDate: d("2099-01-01"), description: "futuro", amountCents: -1000, kind: "EXPENSE", bankId: bankA });
+    assert.equal(card.status, "PENDENTE");
+    assert.equal(past.status, "PAGO");
+    assert.equal(future.status, "PENDENTE");
+
+    const moved = await s.tx.updateTransaction(future.id, HH, { eventDate: d("2026-11-02") });
+    assert.equal(moved.status, "PAGO", "mudar para data passada atualiza o status");
+    const toCard = await s.tx.updateTransaction(past.id, HH, { paymentMethod: "CREDITO", creditCardId: cardId });
+    assert.equal(toCard.status, "PENDENTE", "virar compra no cartão volta a pendente");
+
+    for (const t of [card, past, future]) await s.tx.deleteTransaction(t.id, HH);
+  });
+
+  test("compra nova numa fatura já paga reabre o valor em aberto", async () => {
+    const t1 = await s.tx.createTransaction({ householdId: HH, userId, eventDate: d("2027-02-05"), description: "fev 1", amountCents: -4000, paymentMethod: "CREDITO", creditCardId: cardId });
+    const r = await s.invoices.payInvoice({ invoiceId: t1.invoiceId!, bankId: bankA, userId, householdId: HH, paidAt: d("2027-02-20") });
+    assert.equal(r.status, "PAID");
+    const t2 = await s.tx.createTransaction({ householdId: HH, userId, eventDate: d("2027-02-06"), description: "fev 2", amountCents: -1500, paymentMethod: "CREDITO", creditCardId: cardId });
+    assert.equal(t2.invoiceId, t1.invoiceId);
+    const view = (await s.invoices.listInvoices(HH, { creditCardId: cardId })).find((i) => i.id === t1.invoiceId)!;
+    assert.equal(view.status, "PARTIAL");
+    assert.equal(view.remainingCents, 1500);
+    const r2 = await s.invoices.payInvoice({ invoiceId: t1.invoiceId!, bankId: bankA, userId, householdId: HH, paidAt: d("2027-02-21") });
+    assert.equal(r2.status, "PAID", "dá para pagar o restante");
+    for (const id of [r2.paymentId, r.paymentId, t2.id, t1.id]) await s.tx.deleteTransaction(id, HH);
+  });
+});

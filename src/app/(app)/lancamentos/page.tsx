@@ -13,7 +13,7 @@ export default async function LancamentosPage({ searchParams }: { searchParams: 
   const [categories, banks, creditCards, members] = await Promise.all([
     getCategoryOptions(hh),
     prisma.bank.findMany({ where: { householdId: hh }, orderBy: { order: "asc" }, select: { id: true, name: true, color: true } }),
-    prisma.creditCard.findMany({ where: { householdId: hh }, orderBy: { order: "asc" }, select: { id: true, name: true, color: true } }),
+    prisma.creditCard.findMany({ where: { householdId: hh }, orderBy: { order: "asc" }, select: { id: true, name: true, color: true, closingDay: true, dueDay: true } }),
     listMembers(hh),
   ]);
 

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
+import { CalendarCheck, CalendarClock, X } from "lucide-react";
 import type { CategoryOption } from "@/lib/categories";
-import { todayInputValue } from "@/lib/format";
+import { formatDate, todayInputValue } from "@/lib/format";
+import { resolveInvoicePeriod, invoiceLabel } from "@/lib/invoices/invoicePeriod";
 import { PAYMENT_METHOD_LABEL } from "@/lib/paymentMethod";
 import { ChoiceChips } from "@/components/ui/ChoiceChips";
 import { CategoryPicker } from "@/components/ui/CategoryPicker";
@@ -60,7 +61,7 @@ export function TransactionForm({
 }: {
   categories: CategoryOption[];
   banks: { id: string; name: string; color?: string }[];
-  creditCards: { id: string; name: string; color?: string }[];
+  creditCards: { id: string; name: string; color?: string; closingDay?: number | null; dueDay?: number | null }[];
   members: { id: string; name: string }[];
   initial: TransactionFormValues;
   onClose: () => void;
@@ -78,6 +79,32 @@ export function TransactionForm({
   }
 
   const [error, setError] = useState<string | null>(null);
+  const [otherCashDate, setOtherCashDate] = useState(!!initial.settlementDate && initial.paymentMethod !== "CREDITO");
+
+  const isCredit = values.paymentMethod === "CREDITO";
+  const card = creditCards.find((c) => c.id === values.creditCardId);
+  const eventDate = values.eventDate ? new Date(values.eventDate + "T00:00:00.000Z") : null;
+
+  // Fatura em que a compra cai (e, se parcelada, a da última parcela).
+  const invoicePreview = (() => {
+    if (!isCredit || !card || !eventDate || Number.isNaN(eventDate.getTime())) return null;
+    const cfg = { closingDay: card.closingDay ?? null, dueDay: card.dueDay ?? null };
+    const first = resolveInvoicePeriod(cfg, eventDate);
+    let last = null;
+    const n = Number(values.installmentsCount);
+    if (values.isInstallment && Number.isInteger(n) && n >= 2) {
+      const d = new Date(eventDate);
+      const day = d.getUTCDate();
+      d.setUTCMonth(d.getUTCMonth() + n - 1);
+      if (d.getUTCDate() !== day) d.setUTCDate(0);
+      last = resolveInvoicePeriod(cfg, d);
+    }
+    return { first, last, missingClosing: !card.closingDay };
+  })();
+
+  // Data em que o dinheiro sai/entra da conta (débito, Pix, dinheiro).
+  const cashDateValue = !isCredit ? (otherCashDate && values.settlementDate ? values.settlementDate : values.eventDate) : "";
+  const isFuture = !!cashDateValue && cashDateValue > todayInputValue();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -92,7 +119,7 @@ export function TransactionForm({
     }
     setSaving(true);
     try {
-      await onSubmit(values);
+      await onSubmit({ ...values, settlementDate: !isCredit && otherCashDate ? values.settlementDate : "" });
     } finally {
       setSaving(false);
     }
@@ -138,26 +165,17 @@ export function TransactionForm({
           ))}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted">Data do evento</label>
-            <input
-              type="date"
-              required
-              value={values.eventDate}
-              onChange={(e) => set("eventDate", e.target.value)}
-              className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-muted">Data da efetivação</label>
-            <input
-              type="date"
-              value={values.settlementDate}
-              onChange={(e) => set("settlementDate", e.target.value)}
-              className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-muted">
+            {isCredit ? (values.isInstallment ? "Data da compra (1ª parcela)" : "Data da compra") : values.kind === "receita" ? "Data" : "Data"}
+          </label>
+          <input
+            type="date"
+            required
+            value={values.eventDate}
+            onChange={(e) => set("eventDate", e.target.value)}
+            className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
+          />
         </div>
 
         <CategoryPicker
@@ -190,7 +208,9 @@ export function TransactionForm({
           <p className="text-[11px] text-muted mt-0.5">
             {values.paymentMethod === "CREDITO"
               ? "Vai para a fatura do cartão — não mexe no saldo do banco."
-              : "Sai direto do saldo do banco selecionado abaixo."}
+              : values.kind === "receita"
+                ? "Entra no saldo da conta escolhida abaixo."
+                : "Sai direto do saldo da conta escolhida abaixo."}
           </p>
         </div>
 
@@ -228,15 +248,41 @@ export function TransactionForm({
                   className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent w-32"
                 />
                 <p className="text-[11px] text-muted">
-                  A &quot;Data do evento&quot; abaixo é a data da 1ª parcela. As demais são lançadas automaticamente, uma por
-                  mês, dividindo o valor total informado.
+                  As parcelas são lançadas uma por mês a partir da data da compra, dividindo o valor total, e cada uma cai na
+                  fatura do mês dela.
                 </p>
               </div>
             )}
           </div>
         )}
 
+      {isCredit && invoicePreview && (
+          <div className="flex items-start gap-2 rounded-lg bg-accent/10 text-foreground px-3 py-2 text-xs">
+            <CalendarCheck className="h-4 w-4 shrink-0 text-accent mt-px" />
+            <span>
+              {invoicePreview.last ? "1ª parcela na fatura " : "Entra na fatura "}
+              <strong>{invoiceLabel(invoicePreview.first.referenceYear, invoicePreview.first.referenceMonth)}</strong> do {card?.name} · vence{" "}
+              <strong>{formatDate(invoicePreview.first.dueDate)}</strong>
+              {invoicePreview.last && (
+                <>
+                  {"; última na fatura "}
+                  <strong>{invoiceLabel(invoicePreview.last.referenceYear, invoicePreview.last.referenceMonth)}</strong> · vence{" "}
+                  {formatDate(invoicePreview.last.dueDate)}
+                </>
+              )}
+              .{" "}
+              <span className="text-muted">Fica pago quando a fatura for paga.</span>
+              {invoicePreview.missingClosing && (
+                <span className="block text-warning-fg mt-0.5">
+                  Este cartão está sem dia de fechamento; informe-o em Cartões para a fatura ficar certa.
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+
         {values.paymentMethod !== "CREDITO" && (
+          <>
           <ChoiceChips
             label={values.kind === "receita" ? "Conta que recebe" : "Instituição financeira"}
             options={banks.map((b) => ({ value: b.id, label: b.name, color: b.color }))}
@@ -244,6 +290,40 @@ export function TransactionForm({
             onChange={(v) => set("bankId", v)}
             emptyText={<>Nenhum banco cadastrado — cadastre em &quot;Bancos&quot;.</>}
           />
+          <div className="flex flex-col gap-2">
+            <div className="flex items-start gap-2 rounded-lg bg-surface-muted px-3 py-2 text-xs">
+              {isFuture ? <CalendarClock className="h-4 w-4 shrink-0 text-muted mt-px" /> : <CalendarCheck className="h-4 w-4 shrink-0 text-positive mt-px" />}
+              <span>
+                {isFuture
+                  ? <>Agendado: {values.kind === "receita" ? "entra" : "sai"} do saldo em <strong>{formatDate(cashDateValue + "T00:00:00.000Z")}</strong>.</>
+                  : values.kind === "receita"
+                    ? "Recebido: já entra no saldo da conta."
+                    : "Pago: já sai do saldo da conta."}
+              </span>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={otherCashDate}
+                onChange={(e) => {
+                  setOtherCashDate(e.target.checked);
+                  if (!e.target.checked) set("settlementDate", "");
+                }}
+                className="h-4 w-4 rounded border-border"
+              />
+              {values.kind === "receita" ? "Recebido em outra data" : "Pago em outra data (ex.: boleto agendado)"}
+            </label>
+            {otherCashDate && (
+              <input
+                type="date"
+                value={values.settlementDate}
+                onChange={(e) => set("settlementDate", e.target.value)}
+                aria-label={values.kind === "receita" ? "Data do recebimento" : "Data do pagamento"}
+                className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent"
+              />
+            )}
+          </div>
+          </>
         )}
 
         {members.length > 0 && (
@@ -284,17 +364,6 @@ export function TransactionForm({
           </div>
         </div>
 
-        <ChoiceChips
-          label="Status"
-          columns={3}
-          options={[
-            { value: "PENDENTE", label: "Pendente" },
-            { value: "PAGO", label: "Pago" },
-            { value: "CONFIRMADO", label: "Confirmado" },
-          ]}
-          value={values.status}
-          onChange={(v) => set("status", v as TransactionFormValues["status"])}
-        />
 
         {!values.isInstallment && (
           <label className="flex items-center gap-2 text-sm text-foreground">

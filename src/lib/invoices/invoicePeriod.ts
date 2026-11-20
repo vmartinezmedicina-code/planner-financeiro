@@ -87,8 +87,10 @@ export function deriveInvoiceStatus(
   inv: { status: InvoiceStatusValue; closingDate: Date; dueDate: Date; totalCents: number; paidCents: number },
   today: Date
 ): InvoiceStatusValue {
-  if (inv.status === "PAID") return "PAID";
+  // Pagamento parcial vem antes de "paga": uma compra nova numa fatura já paga
+  // deixa saldo em aberto, e a fatura volta a aparecer como paga em parte.
   if (inv.paidCents > 0 && inv.paidCents < inv.totalCents) return "PARTIAL";
+  if (inv.status === "PAID") return "PAID";
   const t = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
   if (t <= inv.closingDate.getTime()) return "OPEN";
   if (t <= inv.dueDate.getTime()) return "CLOSED";

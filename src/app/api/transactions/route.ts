@@ -6,6 +6,7 @@ import { TransactionStatus, PaymentMethod, TransactionKind, TransactionSource, P
 import { toCents, fromCents } from "@/lib/money";
 import { createTransaction, TransactionError } from "@/lib/finance/transactionService";
 import { assertMemberInHousehold, ScopeError } from "@/lib/household/householdService";
+import { todayAsUtcDate } from "@/lib/format";
 
 const createSchema = z.object({
   eventDate: z.string(),
@@ -35,6 +36,7 @@ export async function GET(req: NextRequest) {
   const bankId = searchParams.get("bankId");
   const creditCardId = searchParams.get("creditCardId");
   const status = searchParams.get("status");
+  const situacao = searchParams.get("situacao"); // "pago" | "aberto": situação derivada (ver finance/paymentState)
   const kind = searchParams.get("kind");
   const memberId = searchParams.get("memberId");
   const search = searchParams.get("search");
@@ -58,6 +60,18 @@ export async function GET(req: NextRequest) {
   if (search) where.description = { contains: search };
   if (uncategorizedOnly) where.categoryId = null;
 
+  if (situacao === "pago" || situacao === "aberto") {
+    const end = new Date(todayAsUtcDate().getTime() + 86400000);
+    const cash = situacao === "pago"
+      ? [{ settlementDate: { lt: end } }, { settlementDate: null, eventDate: { lt: end } }]
+      : [{ settlementDate: { gte: end } }, { settlementDate: null, eventDate: { gte: end } }];
+    const card: Prisma.TransactionWhereInput =
+      situacao === "pago"
+        ? { kind: TransactionKind.CARD_PURCHASE, invoice: { status: "PAID" } }
+        : { kind: TransactionKind.CARD_PURCHASE, OR: [{ invoiceId: null }, { invoice: { status: { not: "PAID" } } }] };
+    where.AND = [{ OR: [{ kind: { not: TransactionKind.CARD_PURCHASE }, OR: cash }, card] }];
+  }
+
   const [items, total, aggregate, uncategorizedCount] = await Promise.all([
     prisma.transaction.findMany({
       where,
@@ -66,6 +80,7 @@ export async function GET(req: NextRequest) {
         bank: true,
         creditCardRef: true,
         member: { select: { id: true, name: true, color: true } },
+        invoice: { select: { referenceYear: true, referenceMonth: true, dueDate: true, status: true, paidAt: true, paidCents: true, totalCents: true } },
         installmentPurchase: { select: { installmentsCount: true } },
       },
       orderBy: { eventDate: "desc" },
