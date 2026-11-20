@@ -14,24 +14,25 @@ datasource db {
 // Usuários (apenas 2 contas fixas, sem auto-cadastro)
 // ---------------------------------------------------------------------------
 model User {
-  id             String    @id @default(cuid())
+  id             String           @id @default(cuid())
   name           String
-  email          String    @unique
+  email          String           @unique
   passwordHash   String
-  avatarColor    String    @default("#6366f1")
-  createdAt      DateTime  @default(now())
-  failedLogins   Int       @default(0)
+  avatarColor    String           @default("#6366f1")
+  createdAt      DateTime         @default(now())
+  failedLogins   Int              @default(0)
   lockedUntil    DateTime?
   // V2: incrementado ao trocar a senha; sessões (JWT) com versão antiga são rejeitadas.
-  sessionVersion Int       @default(0)
+  sessionVersion Int              @default(0)
   householdId    String?
-  household      Household? @relation(fields: [householdId], references: [id])
+  household      Household?       @relation(fields: [householdId], references: [id])
   member         HouseholdMember?
 
   transactions         Transaction[]
   recurringSeries      RecurringSeries[]
   goals                FinancialGoal[]
   goalContributions    GoalContribution[]
+  importSessions       ImportSession[]
   investments          Investment[]
   plannedValues        PlannedValue[]
   installmentPurchases InstallmentPurchase[]
@@ -60,6 +61,7 @@ model Household {
   recurringSeries      RecurringSeries[]
   goals                FinancialGoal[]
   goalContributions    GoalContribution[]
+  importSessions       ImportSession[]
 }
 
 model HouseholdMember {
@@ -84,13 +86,13 @@ model HouseholdMember {
 // Bancos / contas (saldo inicial + saldo atual calculado pelos lançamentos)
 // ---------------------------------------------------------------------------
 model Bank {
-  id                  String   @id @default(cuid())
+  id                  String     @id @default(cuid())
   name                String
-  initialBalance      Float    @default(0) // legado (espelho) — fonte da verdade: initialBalanceCents
-  initialBalanceCents Int      @default(0)
-  color               String   @default("#6366f1")
-  order               Int      @default(0)
-  createdAt           DateTime @default(now())
+  initialBalance      Float      @default(0) // legado (espelho) — fonte da verdade: initialBalanceCents
+  initialBalanceCents Int        @default(0)
+  color               String     @default("#6366f1")
+  order               Int        @default(0)
+  createdAt           DateTime   @default(now())
   householdId         String?
   household           Household? @relation(fields: [householdId], references: [id])
 
@@ -106,15 +108,15 @@ model Bank {
 // Cartões de crédito (fatura calculada pelos lançamentos vinculados)
 // ---------------------------------------------------------------------------
 model CreditCard {
-  id          String   @id @default(cuid())
+  id          String     @id @default(cuid())
   name        String
   institution String?
   limit       Float?
   closingDay  Int? // dia de fechamento da fatura (1-31)
   dueDay      Int? // dia de vencimento da fatura (1-31)
-  color       String   @default("#ec4899")
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
+  color       String     @default("#ec4899")
+  order       Int        @default(0)
+  createdAt   DateTime   @default(now())
   householdId String?
   household   Household? @relation(fields: [householdId], references: [id])
 
@@ -177,16 +179,16 @@ enum CategoryType {
 }
 
 model Category {
-  id        String       @id @default(cuid())
-  name      String
-  type      CategoryType
-  order     Int          @default(0)
-  parentId  String?
-  parent    Category?    @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children  Category[]   @relation("CategoryTree")
-  createdAt DateTime     @default(now())
+  id          String       @id @default(cuid())
+  name        String
+  type        CategoryType
+  order       Int          @default(0)
+  parentId    String?
+  parent      Category?    @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Category[]   @relation("CategoryTree")
+  createdAt   DateTime     @default(now())
   householdId String?
-  household   Household? @relation(fields: [householdId], references: [id])
+  household   Household?   @relation(fields: [householdId], references: [id])
 
   plannedValues        PlannedValue[]
   transactions         Transaction[]
@@ -202,18 +204,18 @@ model Category {
 // Valores planejados (orçado) por categoria/mês/ano
 // ---------------------------------------------------------------------------
 model PlannedValue {
-  id         String   @id @default(cuid())
-  categoryId String
-  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  year       Int
+  id          String     @id @default(cuid())
+  categoryId  String
+  category    Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  year        Int
   month       Int // 1-12
-  amount      Float    @default(0) // legado (espelho) — fonte da verdade: amountCents
-  amountCents Int      @default(0)
+  amount      Float      @default(0) // legado (espelho) — fonte da verdade: amountCents
+  amountCents Int        @default(0)
   userId      String?
-  user        User?    @relation(fields: [userId], references: [id])
+  user        User?      @relation(fields: [userId], references: [id])
   householdId String?
   household   Household? @relation(fields: [householdId], references: [id])
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime   @updatedAt
 
   @@unique([categoryId, year, month])
   @@index([year, month])
@@ -291,6 +293,9 @@ model Transaction {
   recurrenceRule        String? // legado (não usado)
   recurringSeriesId     String? // ocorrência de uma série recorrente mensal
   recurringSeries       RecurringSeries?     @relation(fields: [recurringSeriesId], references: [id], onDelete: SetNull)
+  importSessionId       String? // criado por uma importação (permite desfazer)
+  importSession         ImportSession?       @relation(fields: [importSessionId], references: [id], onDelete: SetNull)
+  sourceHash            String? // impressão digital da linha importada (deduplicação)
   installmentPurchaseId String? // preenchido quando o lançamento é 1 parcela de uma compra parcelada
   installmentPurchase   InstallmentPurchase? @relation(fields: [installmentPurchaseId], references: [id], onDelete: Cascade)
   installmentNumber     Int? // número desta parcela (1, 2, 3...)
@@ -311,6 +316,8 @@ model Transaction {
   @@index([transferGroupId])
   @@index([invoiceId])
   @@index([recurringSeriesId])
+  @@index([importSessionId])
+  @@index([householdId, sourceHash])
 }
 
 // ---------------------------------------------------------------------------
@@ -320,30 +327,30 @@ model Transaction {
 // gerado (ano*12 + mês-1); 0 = nenhum. endDate = última data permitida (inclusiva).
 // ---------------------------------------------------------------------------
 model RecurringSeries {
-  id               String            @id @default(cuid())
+  id               String           @id @default(cuid())
   householdId      String
-  household        Household         @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  household        Household        @relation(fields: [householdId], references: [id], onDelete: Cascade)
   userId           String
-  user             User              @relation(fields: [userId], references: [id])
+  user             User             @relation(fields: [userId], references: [id])
   description      String
   amountCents      Int
   kind             TransactionKind
   paymentMethod    PaymentMethod
   bankId           String?
-  bank             Bank?             @relation(fields: [bankId], references: [id], onDelete: SetNull)
+  bank             Bank?            @relation(fields: [bankId], references: [id], onDelete: SetNull)
   creditCardId     String?
-  creditCard       CreditCard?       @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+  creditCard       CreditCard?      @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
   categoryId       String?
-  category         Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  category         Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   memberId         String?
-  member           HouseholdMember?  @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  member           HouseholdMember? @relation(fields: [memberId], references: [id], onDelete: SetNull)
   dayOfMonth       Int
   startDate        DateTime
   endDate          DateTime?
-  active           Boolean           @default(true)
-  generatedThrough Int               @default(0)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  active           Boolean          @default(true)
+  generatedThrough Int              @default(0)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   transactions Transaction[]
 
@@ -383,21 +390,21 @@ model InstallmentPurchase {
 // Investimentos
 // ---------------------------------------------------------------------------
 model Investment {
-  id                String   @id @default(cuid())
-  product           String // tipo/produto (ex: Tesouro Selic, CDB, Ações)
+  id                     String     @id @default(cuid())
+  product                String // tipo/produto (ex: Tesouro Selic, CDB, Ações)
   institution            String
   contributedAmount      Float // legado (espelho) — fonte da verdade: contributedAmountCents
-  contributedAmountCents Int      @default(0)
+  contributedAmountCents Int        @default(0)
   contributionDate       DateTime
   currentValue           Float // legado (espelho) — fonte da verdade: currentValueCents
-  currentValueCents      Int      @default(0)
+  currentValueCents      Int        @default(0)
   userId                 String
-  user                   User     @relation(fields: [userId], references: [id])
+  user                   User       @relation(fields: [userId], references: [id])
   householdId            String?
   household              Household? @relation(fields: [householdId], references: [id])
   notes                  String?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
 
   goals FinancialGoal[]
 
@@ -492,4 +499,73 @@ model GoalContribution {
   createdAt   DateTime           @default(now())
 
   @@index([goalId, date])
+}
+
+// ---------------------------------------------------------------------------
+// Importação (fatura, extrato, comprovantes, CSV). Tudo entra primeiro numa
+// área de conferência (ImportItem); só vira Transaction ao confirmar.
+// target: CARD (cartão; fatura escolhida ou pela data) ou BANK (conta).
+// ---------------------------------------------------------------------------
+enum ImportTarget {
+  CARD
+  BANK
+}
+
+enum ImportStatus {
+  REVIEW
+  COMPLETED
+}
+
+model ImportSession {
+  id                  String       @id @default(cuid())
+  householdId         String
+  household           Household    @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User         @relation(fields: [userId], references: [id])
+  target              ImportTarget
+  status              ImportStatus @default(REVIEW)
+  creditCardId        String?
+  bankId              String?
+  memberId            String?
+  invoiceYear         Int? // fatura escolhida (null = pela data de cada compra)
+  invoiceMonth        Int?
+  createFutureParcels Boolean      @default(true)
+  detectedInstitution String?
+  statementTotalCents Int? // total informado no documento (para conferência)
+  warnings            String? // avisos da leitura, um por linha
+  fileCount           Int          @default(0)
+  completedAt         DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  items        ImportItem[]
+  transactions Transaction[]
+
+  @@index([householdId, createdAt])
+}
+
+model ImportItem {
+  id                  String        @id @default(cuid())
+  sessionId           String
+  session             ImportSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  position            Int
+  fileName            String?
+  date                DateTime // data impressa no documento
+  originalDescription String
+  description         String
+  amountCents         Int // com sinal: negativo = saída/compra; positivo = entrada/estorno
+  kindHint            String // PURCHASE, REFUND, FEE, BILL_PAYMENT, INCOME, EXPENSE, OWN_TRANSFER, INVESTMENT
+  categoryId          String?
+  categorySource      String? // HISTORY, AI, USER
+  installmentNumber   Int?
+  installmentTotal    Int?
+  include             Boolean       @default(true)
+  duplicateStatus     String        @default("NEW") // NEW, POSSIBLE, LIKELY, REPEATED
+  duplicateOfId       String? // Transaction (POSSIBLE/LIKELY) ou ImportItem (REPEATED)
+  note                String?
+  sourceHash          String
+  transactionId       String? // lançamento criado ao confirmar
+  createdAt           DateTime      @default(now())
+
+  @@index([sessionId, position])
 }

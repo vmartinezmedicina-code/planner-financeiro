@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { clsx } from "clsx";
 import {
   Plus,
@@ -105,7 +106,6 @@ export function TransactionsBoard({
   const [deletingSeries, setDeletingSeries] = useState<Transaction | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const today = todayAsUtcDate();
 
   const [quickText, setQuickText] = useState("");
@@ -344,24 +344,6 @@ export function TransactionsBoard({
     window.open(`/api/transactions/export?${params.toString()}`, "_blank");
   }
 
-  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const formData = new FormData();
-    formData.append("file", file);
-    setBusy(true);
-    try {
-      const res = await fetch("/api/transactions/import", { method: "POST", body: formData });
-      const json = await res.json();
-      if (res.ok) setMessage(`${json.created} lançamento(s) importado(s), ${json.skipped} ignorado(s).`);
-      else setMessage(json.error || "Erro ao importar.");
-      load();
-    } finally {
-      setBusy(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  }
-
   const editingValues: TransactionFormValues = editing
     ? {
         id: editing.id,
@@ -580,14 +562,9 @@ export function TransactionsBoard({
         >
           <Wand2 className="h-3.5 w-3.5" /> Regras automáticas
         </button>
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="flex items-center gap-1.5 rounded-lg border border-border text-xs font-medium px-3 py-2"
-        >
-          <Upload className="h-3.5 w-3.5" /> Importar
-        </button>
-        <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImportFile} />
+        <Link href="/lancamentos/importar" className="flex items-center gap-1.5 rounded-lg border border-border text-xs font-medium px-3 py-2">
+          <Upload className="h-3.5 w-3.5" /> Importar fatura/extrato
+        </Link>
         <button type="button" onClick={handleExport} className="flex items-center gap-1.5 rounded-lg border border-border text-xs font-medium px-3 py-2">
           <Download className="h-3.5 w-3.5" /> Exportar
         </button>

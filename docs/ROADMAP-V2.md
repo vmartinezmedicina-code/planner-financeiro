@@ -54,8 +54,13 @@ Estado: ☑ código pronto (sem mudança de banco; basta `git push`). O que foi 
 - `FinancialCommitment`; visões mês/7 dias/30 dias/atrasados; marcar como pago cria/vincula lançamento.
 - Projeção de caixa 7/30/60/90 dias (realizado × projetado separados).
 
-## Fase 6 — Importação
-- `ImportSession`/`ImportItem` (staging, estados), CSV/PDF/imagem/câmera, tela de conferência, `sourceHash` + deduplicação em três níveis, sugestão de instituição (nunca criar automaticamente).
+## Fase 6 — Importação ☑ (código pronto; migration 20261121010000_imports)
+- `ImportSession`/`ImportItem` (conferência antes de lançar), CSV/PDF/foto/câmera, `sourceHash` + deduplicação em três níveis
+  (já lançado / possível duplicado / repetido entre prints), categoria pelo histórico → sugestão da IA.
+- Fatura de cartão: escolhe a fatura (ou pela data); parcela n/N cria a compra parcelada e as parcelas n…N nas faturas seguintes;
+  estorno entra como crédito; pagamento de fatura nunca entra pela importação. Extrato: receita/despesa na conta;
+  pagamento de fatura, transferência e investimento entram desmarcados. Desfazer remove tudo o que a importação lançou.
+- Não cria bancos/cartões automaticamente. Leitura de PDF/foto pela IA (`src/lib/imports/extract.ts`, saída estruturada).
 
 ## Fase 7 — Inteligência
 - `Merchant`/`MerchantAlias` com aprendizado por correção; `CategorizationRule` (regra → histórico → IA);

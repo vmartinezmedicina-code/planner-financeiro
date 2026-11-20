@@ -42,6 +42,14 @@ export type CreateTransactionInput = {
   installmentNumber?: number | null;
   transferGroupId?: string | null;
   recurringSeriesId?: string | null;
+  importSessionId?: string | null;
+  sourceHash?: string | null;
+  /** Força a fatura (ano/mês de referência) de uma compra no cartão — usado na importação de fatura. */
+  invoiceRef?: { year: number; month: number } | null;
+  /** Compra no cartão com valor positivo = estorno/crédito na fatura (não força o sinal negativo). */
+  allowCredit?: boolean;
+  /** Não recalcula o total da fatura (o chamador recalcula no fim de um lote). */
+  skipInvoiceRecalc?: boolean;
 };
 
 /**
@@ -52,7 +60,8 @@ export type CreateTransactionInput = {
  */
 export async function createTransaction(input: CreateTransactionInput, db: Db = prisma) {
   const kind = input.kind ?? deriveKind(input.paymentMethod ?? "DEBITO", input.amountCents);
-  const amountCents = normalizeSign(kind, Math.round(input.amountCents));
+  const rounded = Math.round(input.amountCents);
+  const amountCents = kind === "CARD_PURCHASE" && input.allowCredit && rounded > 0 ? rounded : normalizeSign(kind, rounded);
   const links = resolveLinksForKind(kind, input.bankId ?? null, input.creditCardId ?? null);
   const paymentMethod = paymentMethodForKind(kind, input.paymentMethod);
 
@@ -64,7 +73,7 @@ export async function createTransaction(input: CreateTransactionInput, db: Db = 
       select: { id: true, closingDay: true, dueDay: true, householdId: true },
     });
     if (!card) throw new TransactionError("Cartão não encontrado.");
-    invoiceId = await ensureInvoiceForPurchase(db, card, input.eventDate);
+    invoiceId = await ensureInvoiceForPurchase(db, card, input.eventDate, input.invoiceRef ?? undefined);
   } else if (links.bankId) {
     const bank = await db.bank.findFirst({ where: { id: links.bankId, householdId: input.householdId }, select: { id: true } });
     if (!bank) throw new TransactionError("Conta não encontrada.");
@@ -91,12 +100,14 @@ export async function createTransaction(input: CreateTransactionInput, db: Db = 
       installmentNumber: input.installmentNumber ?? null,
       transferGroupId: input.transferGroupId ?? null,
       recurringSeriesId: input.recurringSeriesId ?? null,
+      importSessionId: input.importSessionId ?? null,
+      sourceHash: input.sourceHash ?? null,
       userId: input.userId,
       householdId: input.householdId,
     },
   });
 
-  if (invoiceId) await recalcInvoiceTotal(db, invoiceId);
+  if (invoiceId && !input.skipInvoiceRecalc) await recalcInvoiceTotal(db, invoiceId);
   return created;
 }
 

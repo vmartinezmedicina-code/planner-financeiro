@@ -66,6 +66,12 @@ Depois da Fase 2 (novembro/2026):
 - Alertas de orçamento por ritmo (`src/lib/analytics/budgetPace.ts`): vermelho acima do planejado; amarelo só para gasto variável no mês em andamento (80%+ e à frente do mês); fixo × variável reconhecido pelo histórico. Anel de progresso e bloco "Atenção" no detalhe de despesas.
 - Metas (Fase 4): `FinancialGoal` + `GoalContribution` (migration `20261120010000_financial_goals`), cálculo puro em `src/lib/goals/goalCalculator.ts`, serviço `goalService.ts` (valor atual por aportes OU saldo de conta/investimento vinculado; fluxo livre = receita − despesa planejadas), tela `/metas` com criação, aportes, simulações e compra à vista × parcelado. Aportes são só registros da meta (não movem saldo).
 
+- Importação (Fase 6): `ImportSession` + `ImportItem` + `Transaction.importSessionId/sourceHash` (migration `20261121010000_imports`).
+  Tela `/lancamentos/importar` (cartão ou conta, fatura, arquivos) → conferência `/lancamentos/importar/[id]` → "Lançar" em lotes (`/api/imports/[id]/commit`) → "Desfazer".
+  Lógica pura em `src/lib/imports/` (`normalize`, `dedupe`, `plan` = parcelas/faturas, `csv`), IA em `extract.ts`, banco em `importService.ts`.
+  Fotos são reduzidas no navegador (2000 px, JPEG) por causa do limite de ~4,5 MB da Vercel; rotas de leitura com `maxDuration = 300`.
+- IA: `src/lib/ai/provider.ts` (modelo por `ANTHROPIC_MODEL`, padrão `claude-opus-5-5`). A rota antiga `/api/transactions/import` (CSV direto) ficou sem botão.
+
 ## Estado atual (08/11/2026)
 Funcionando em produção: login com bloqueio, troca de senha, planejamento, lançamentos (inclusive por texto/IA), bancos, cartões, parcelamentos, investimentos, relatórios (Excel/PDF), assistente, dashboard novo.
 

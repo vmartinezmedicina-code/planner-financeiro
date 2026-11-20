@@ -2,7 +2,7 @@ import { Prisma, TransactionKind, TransactionStatus, PaymentMethod, TransactionS
 import { prisma } from "@/lib/prisma";
 import { fromCents } from "@/lib/money";
 import { todayAsUtcDate } from "@/lib/format";
-import { deriveInvoiceStatus, invoiceLabel, resolveInvoicePeriod, type InvoiceStatusValue } from "./invoicePeriod";
+import { deriveInvoiceStatus, invoiceLabel, periodForReference, resolveInvoicePeriod, type InvoiceStatusValue } from "./invoicePeriod";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -13,9 +13,10 @@ type Db = Prisma.TransactionClient | typeof prisma;
 export async function ensureInvoiceForPurchase(
   db: Db,
   card: { id: string; closingDay: number | null; dueDay: number | null; householdId: string | null },
-  purchaseDate: Date
+  purchaseDate: Date,
+  forcedRef?: { year: number; month: number }
 ): Promise<string> {
-  const p = resolveInvoicePeriod(card, purchaseDate);
+  const p = forcedRef ? periodForReference(card, forcedRef.year, forcedRef.month) : resolveInvoicePeriod(card, purchaseDate);
   const inv = await db.creditCardInvoice.upsert({
     where: {
       creditCardId_referenceYear_referenceMonth: {

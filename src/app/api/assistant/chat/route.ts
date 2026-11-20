@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSession } from "@/lib/auth";
+import { aiModel } from "@/lib/ai/provider";
 import { buildFinancialContext } from "@/lib/financialContext";
 
 const bodySchema = z.object({
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const response = await client.messages.create({
-      model: process.env.ANTHROPIC_MODEL ?? "claude-opus-5",
+      model: aiModel(),
       max_tokens: 2048,
       system: [
         { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },

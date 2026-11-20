@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import Anthropic from "@anthropic-ai/sdk";
 import { getSession } from "@/lib/auth";
+import { aiModel } from "@/lib/ai/provider";
 import { prisma } from "@/lib/prisma";
 import { getCategoryOptions } from "@/lib/categories";
 import { todayInputValue } from "@/lib/format";
@@ -115,7 +116,7 @@ Regras importantes:
 
   try {
     const response = await client.messages.create({
-      model: process.env.ANTHROPIC_MODEL ?? "claude-opus-5",
+      model: aiModel(),
       max_tokens: 1024,
       output_config: {
         effort: "low",
