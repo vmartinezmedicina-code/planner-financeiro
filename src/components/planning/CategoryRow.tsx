@@ -139,7 +139,15 @@ export function CategoryRow({
         </div>
 
         <div className="w-32 sm:w-36 shrink-0 text-right">
-          {activeTab === "planejado" ? (
+          {activeTab === "planejado" && hasChildren ? (
+            // Categoria com subcategorias: mostra a soma (não é editável; o valor vem das filhas).
+            <span
+              className={clsx("block px-2 py-1 text-sm tabular-nums text-foreground", isHeader ? "font-semibold" : "font-medium")}
+              title="Soma das subcategorias"
+            >
+              {formatCurrency(node.plannedTotal)}
+            </span>
+          ) : activeTab === "planejado" ? (
             <div className="flex items-center justify-end gap-1">
               {wasAdjusted && <TrendingUp className="h-3 w-3 text-accent shrink-0" aria-label="Valor ajustado" />}
               <input
@@ -159,9 +167,9 @@ export function CategoryRow({
         </div>
       </div>
 
-      {isHeader && activeTab === "planejado" && (
-        <div className="flex justify-end px-2" style={{ paddingRight: "0px" }}>
-          <span className="text-xs text-muted mr-1">Total planejado: {formatCurrency(node.plannedTotal)}</span>
+      {isHeader && activeTab === "planejado" && hasChildren && node.planned !== 0 && (
+        <div className="flex justify-end px-2">
+          <span className="text-xs text-muted mr-1">Inclui {formatCurrency(node.planned)} planejado direto em {node.name}</span>
         </div>
       )}
 
