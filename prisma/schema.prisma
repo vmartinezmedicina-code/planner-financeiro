@@ -30,6 +30,8 @@ model User {
 
   transactions         Transaction[]
   recurringSeries      RecurringSeries[]
+  goals                FinancialGoal[]
+  goalContributions    GoalContribution[]
   investments          Investment[]
   plannedValues        PlannedValue[]
   installmentPurchases InstallmentPurchase[]
@@ -56,6 +58,8 @@ model Household {
   investments          Investment[]
   invoices             CreditCardInvoice[]
   recurringSeries      RecurringSeries[]
+  goals                FinancialGoal[]
+  goalContributions    GoalContribution[]
 }
 
 model HouseholdMember {
@@ -93,6 +97,7 @@ model Bank {
   transactions    Transaction[]
   paidInvoices    CreditCardInvoice[]
   recurringSeries RecurringSeries[]
+  goals           FinancialGoal[]
 
   @@index([householdId])
 }
@@ -394,6 +399,97 @@ model Investment {
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
+  goals FinancialGoal[]
+
   @@index([userId])
   @@index([householdId])
+}
+
+// ---------------------------------------------------------------------------
+// Metas financeiras. O valor atual é derivado: saldo da conta ou valor do
+// investimento vinculado, OU (sem vínculo) valor já reservado + aportes.
+// Nunca as duas coisas juntas, para não contar o mesmo dinheiro duas vezes.
+// ---------------------------------------------------------------------------
+enum GoalType {
+  TRAVEL
+  PURCHASE
+  EMERGENCY_RESERVE
+  EDUCATION
+  HOME
+  VEHICLE
+  INVESTMENT
+  DEBT_REPAYMENT
+  OTHER
+}
+
+enum GoalStrategy {
+  SAVE
+  INVEST
+  SPEND_PLAN
+  MIXED
+}
+
+enum GoalPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum GoalStatus {
+  ACTIVE
+  PAUSED
+  ACHIEVED
+  CANCELLED
+}
+
+enum ContributionSource {
+  MANUAL
+  TRANSFER
+  INVESTMENT
+  SAVINGS
+}
+
+model FinancialGoal {
+  id                 String       @id @default(cuid())
+  householdId        String
+  household          Household    @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User         @relation(fields: [userId], references: [id])
+  name               String
+  description        String?
+  type               GoalType     @default(OTHER)
+  strategy           GoalStrategy @default(SAVE)
+  priority           GoalPriority @default(MEDIUM)
+  status             GoalStatus   @default(ACTIVE)
+  targetAmountCents  Int
+  initialAmountCents Int          @default(0) // "valor já reservado" na criação
+  targetDate         DateTime?
+  monthlyPlanCents   Int? // aporte mensal que a família pretende fazer (opcional)
+  linkedBankId       String?
+  linkedBank         Bank?        @relation(fields: [linkedBankId], references: [id], onDelete: SetNull)
+  linkedInvestmentId String?
+  linkedInvestment   Investment?  @relation(fields: [linkedInvestmentId], references: [id], onDelete: SetNull)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  contributions GoalContribution[]
+
+  @@index([householdId, status])
+}
+
+model GoalContribution {
+  id          String             @id @default(cuid())
+  goalId      String
+  goal        FinancialGoal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  householdId String
+  household   Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User               @relation(fields: [userId], references: [id])
+  amountCents Int // positivo = aporte; negativo = retirada
+  date        DateTime
+  source      ContributionSource @default(MANUAL)
+  note        String?
+  createdAt   DateTime           @default(now())
+
+  @@index([goalId, date])
 }

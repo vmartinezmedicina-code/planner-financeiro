@@ -14,6 +14,7 @@ import {
   Layers,
   FileBarChart,
   MoreHorizontal,
+  Target,
   X,
 } from "lucide-react";
 import { clsx } from "clsx";
@@ -40,6 +41,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: "Patrimônio e análise",
     items: [
+      { href: "/metas", label: "Metas", icon: Target },
       { href: "/investimentos", label: "Investimentos", icon: PiggyBank },
       { href: "/relatorios", label: "Relatórios", icon: FileBarChart },
       { href: "/assistente", label: "Assistente IA", icon: MessageCircle },

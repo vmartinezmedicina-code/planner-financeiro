@@ -25,6 +25,7 @@ type Services = {
   dashboard: typeof import("../src/lib/dashboard");
   analytics: typeof import("../src/lib/analytics/categoryAnalytics");
   recurrence: typeof import("../src/lib/finance/recurrence");
+  goals: typeof import("../src/lib/goals/goalService");
 };
 let s: Services;
 
@@ -59,6 +60,7 @@ before(async () => {
     dashboard: await import("../src/lib/dashboard"),
     analytics: await import("../src/lib/analytics/categoryAnalytics"),
     recurrence: await import("../src/lib/finance/recurrence"),
+    goals: await import("../src/lib/goals/goalService"),
   };
   const p = s.prisma;
   await p.household.createMany({ data: [{ id: HH, name: "Teste" }, { id: OTHER_HH, name: "Outra" }] });
@@ -490,5 +492,55 @@ describe("recorrência no cartão: edição e exclusão em lote", () => {
     const invAfter = await s.prisma.creditCardInvoice.findMany({ where: { creditCardId: card2.id } });
     assert.ok(invAfter.every((i) => i.totalCents === 0), "faturas zeradas após a exclusão");
     assert.equal(await s.prisma.recurringSeries.findUnique({ where: { id: r.seriesId } }), null, "série sem ocorrências é removida");
+  });
+});
+
+describe("metas", () => {
+  const today = d("2026-11-20");
+
+  test("valor atual = já reservado + aportes; cálculo do mensal e fluxo livre pelo planejado", async () => {
+    const incomeCat = await s.prisma.category.create({ data: { name: "Salário", type: "RECEITA", householdId: HH } });
+    await s.prisma.plannedValue.create({ data: { categoryId: incomeCat.id, year: 2026, month: 11, amount: 8000, amountCents: 800000, householdId: HH } });
+    await s.prisma.plannedValue.create({ data: { categoryId: foodCategoryId, year: 2026, month: 11, amount: 2800, amountCents: 280000, householdId: HH } });
+
+    const g = await s.prisma.financialGoal.create({
+      data: { householdId: HH, userId, name: "Viagem", type: "TRAVEL", targetAmountCents: 3_000_000, initialAmountCents: 500_000, targetDate: d("2027-07-31") },
+    });
+    await s.prisma.goalContribution.create({ data: { goalId: g.id, householdId: HH, userId, amountCents: 150_000, date: d("2026-11-10") } });
+    await s.prisma.goalContribution.create({ data: { goalId: g.id, householdId: HH, userId, amountCents: -50_000, date: d("2026-11-15") } });
+
+    const { goals, summary } = await s.goals.listGoals(HH, today);
+    const v = goals.find((x) => x.id === g.id)!;
+    assert.equal(v.currentSource, "CONTRIBUTIONS");
+    assert.equal(v.currentCents, 600_000, "5.000 + 1.500 − 500");
+    assert.equal(v.progress.monthlyNeededCents, 300_000);
+    assert.equal(summary.freeFlow.basis, "PLANNED");
+    assert.equal(summary.freeFlow.cents, 520_000, "8.000 − 2.800");
+    assert.equal(v.freeFlowSharePct, 57.7, "3.000 de 5.200");
+    assert.equal(v.contributions.length, 2);
+  });
+
+  test("meta vinculada a conta usa o saldo da conta e ignora aportes", async () => {
+    const reserva = await s.prisma.bank.create({ data: { name: "Reserva", initialBalance: 1234.56, initialBalanceCents: 123456, householdId: HH } });
+    const g = await s.prisma.financialGoal.create({
+      data: { householdId: HH, userId, name: "Emergência", type: "EMERGENCY_RESERVE", targetAmountCents: 1_000_000, linkedBankId: reserva.id },
+    });
+    await s.prisma.goalContribution.create({ data: { goalId: g.id, householdId: HH, userId, amountCents: 999_999, date: d("2026-11-10") } });
+    const v = (await s.goals.listGoals(HH, today)).goals.find((x) => x.id === g.id)!;
+    assert.equal(v.currentSource, "BANK");
+    assert.equal(v.currentCents, 123456);
+    assert.equal(v.linkedName, "Reserva");
+  });
+
+  test("vínculos: conta de outra família ou conta e investimento juntos são recusados", async () => {
+    const foreign = await s.prisma.bank.create({ data: { name: "X", householdId: OTHER_HH } });
+    await assert.rejects(s.goals.validateGoalLinks(HH, foreign.id, null), /Conta não encontrada/);
+    await assert.rejects(s.goals.validateGoalLinks(HH, bankA, "qualquer"), /não aos dois/);
+  });
+
+  test("metas de outra família não aparecem", async () => {
+    await s.prisma.financialGoal.create({ data: { householdId: OTHER_HH, userId, name: "Alheia", targetAmountCents: 100 } });
+    const { goals } = await s.goals.listGoals(HH, today);
+    assert.ok(!goals.some((g) => g.name === "Alheia"));
   });
 });

@@ -3,6 +3,7 @@ import { formatDate, todayAsUtcDate } from "@/lib/format";
 import { formatCents } from "@/lib/money";
 import { getDashboardData } from "@/lib/dashboard";
 import { getCategoryAnalysis } from "@/lib/analytics/categoryAnalytics";
+import { listGoals } from "@/lib/goals/goalService";
 
 // Monta um resumo textual da situação financeira atual para dar contexto à IA.
 // Todos os números já vêm calculados pelo backend; a IA só interpreta.
@@ -11,12 +12,13 @@ export async function buildFinancialContext(householdId: string): Promise<string
   const year = today.getUTCFullYear();
   const month = today.getUTCMonth() + 1;
 
-  const [d, despesas, receitas, cards, investments] = await Promise.all([
+  const [d, despesas, receitas, cards, investments, goalsData] = await Promise.all([
     getDashboardData(householdId, year, month),
     getCategoryAnalysis(householdId, { type: "DESPESA", categoryId: null, year, month }),
     getCategoryAnalysis(householdId, { type: "RECEITA", categoryId: null, year, month }),
     prisma.creditCard.findMany({ where: { householdId }, select: { name: true, limit: true } }),
     prisma.investment.findMany({ where: { householdId }, select: { contributedAmountCents: true, currentValueCents: true } }),
+    listGoals(householdId, today),
   ]);
 
   const accountLines = d.balance.accounts.map(
@@ -36,6 +38,18 @@ export async function buildFinancialContext(householdId: string): Promise<string
   const upcomingLines = d.upcoming.items
     .slice(0, 15)
     .map((i) => `- ${formatDate(i.date)}: ${i.label} ${formatCents(i.amountCents)}${i.overdue ? " (vencido)" : ""}${i.provisional ? " (fatura ainda aberta)" : ""}`);
+
+  const goalLines = goalsData.goals
+    .filter((g) => g.status === "ACTIVE" || g.status === "PAUSED")
+    .map((g) => {
+      const p = g.progress;
+      const prazo = g.targetDate ? `, prazo ${formatDate(g.targetDate)} (${p.monthsLeft} meses)` : ", sem prazo";
+      const mensal = p.monthlyNeededCents ? `, precisa guardar ${formatCents(p.monthlyNeededCents)}/mês` : "";
+      const plano = g.monthlyPlanCents ? `, aporte planejado ${formatCents(g.monthlyPlanCents)}/mês` : "";
+      const peso = g.freeFlowSharePct !== null ? ` (${g.freeFlowSharePct}% do fluxo livre)` : "";
+      return `- ${g.name}: ${formatCents(g.currentCents)} de ${formatCents(g.targetCents)} (${p.percent}%)${prazo}${mensal}${plano}${peso}${g.status === "PAUSED" ? " [pausada]" : ""}`;
+    });
+  const ff = goalsData.summary.freeFlow;
 
   const totalInvested = investments.reduce((acc, i) => acc + i.contributedAmountCents, 0);
   const totalInvestedCurrent = investments.reduce((acc, i) => acc + i.currentValueCents, 0);
@@ -68,6 +82,10 @@ ${cardLines.join("\n") || "(nenhum cartão cadastrado)"}
 
 Próximos ${d.upcoming.days} dias (já lançado):
 ${upcomingLines.join("\n") || "(nada a vencer)"}
+
+Metas:
+${goalLines.join("\n") || "(nenhuma meta cadastrada)"}
+Fluxo mensal livre: ${ff.basis === "NONE" ? "sem dados" : formatCents(ff.cents) + (ff.basis === "PLANNED" ? " (planejado)" : " (média de 3 meses)")}
 
 Investimentos:
 - Total aportado: ${formatCents(totalInvested)}

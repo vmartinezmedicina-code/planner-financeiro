@@ -46,7 +46,7 @@ Estado: ☑ código pronto (sem mudança de banco; basta `git push`). O que foi 
 - `src/lib/analytics/`: `categoryAnalytics` (mês, anterior, média 3/6, mediana, min/máx, nº, ticket médio/mediano),
   `weekly` (seg–dom, comparação mês a mês), `behaviorInsights` + `insights/*` (regras determinísticas, com limiar de histórico).
 
-## Fase 4 — Metas
+## Fase 4 — Metas ☑ (código pronto; migration 20261120010000_financial_goals)
 - `FinancialGoal`, `GoalContribution`; `goalCalculator` (restante, meses, mensal, semanal, %).
 - `GoalsBoard`, `GoalWizard`, `GoalSimulation` (cenários no cliente, sem salvar), impacto no fluxo livre; planejamento de compra (à vista × parcelado).
 

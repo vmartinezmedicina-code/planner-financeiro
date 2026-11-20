@@ -63,6 +63,9 @@ Depois da Fase 2 (novembro/2026):
 - Crédito/débito automáticos: situação e data de efetivação derivadas (`src/lib/finance/paymentState.ts`); no crédito o formulário mostra a fatura e o vencimento; sem status manual.
 - Recorrência mensal de verdade: `RecurringSeries` + `Transaction.recurringSeriesId` (migration `20261119010000_recurring_series`), serviço em `src/lib/finance/recurrence.ts` (12 meses à frente, renovação automática ao abrir Dashboard/Lançamentos/Cartões, editar/excluir "só este" ou "este e os próximos").
 
+- Alertas de orçamento por ritmo (`src/lib/analytics/budgetPace.ts`): vermelho acima do planejado; amarelo só para gasto variável no mês em andamento (80%+ e à frente do mês); fixo × variável reconhecido pelo histórico. Anel de progresso e bloco "Atenção" no detalhe de despesas.
+- Metas (Fase 4): `FinancialGoal` + `GoalContribution` (migration `20261120010000_financial_goals`), cálculo puro em `src/lib/goals/goalCalculator.ts`, serviço `goalService.ts` (valor atual por aportes OU saldo de conta/investimento vinculado; fluxo livre = receita − despesa planejadas), tela `/metas` com criação, aportes, simulações e compra à vista × parcelado. Aportes são só registros da meta (não movem saldo).
+
 ## Estado atual (08/11/2026)
 Funcionando em produção: login com bloqueio, troca de senha, planejamento, lançamentos (inclusive por texto/IA), bancos, cartões, parcelamentos, investimentos, relatórios (Excel/PDF), assistente, dashboard novo.
 
